@@ -1,26 +1,112 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ─── ProjectFlow Design Tokens ──────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Base */
+  --color-background:       #f8f9fa;
+  --color-foreground:       #1a1a2e;
+
+  /* Card / Surface */
+  --color-card:             #ffffff;
+  --color-card-foreground:  #1a1a2e;
+  --color-popover:          #ffffff;
+  --color-popover-foreground: #1a1a2e;
+
+  /* Primary — Deep Navy #1a1a2e */
+  --color-primary:          #1a1a2e;
+  --color-primary-foreground: #ffffff;
+
+  /* Secondary — Light grey */
+  --color-secondary:        #f1f5f9;
+  --color-secondary-foreground: #1a1a2e;
+
+  /* Muted */
+  --color-muted:            #f8f9fa;
+  --color-muted-foreground: #64748b;
+
+  /* Accent — Coral Red #e94560 */
+  --color-accent:           #e94560;
+  --color-accent-foreground: #ffffff;
+
+  /* Destructive */
+  --color-destructive:      #ef4444;
+  --color-destructive-foreground: #ffffff;
+
+  /* Borders & Ring */
+  --color-border:           #e2e8f0;
+  --color-input:            #e2e8f0;
+  --color-ring:             #1a1a2e;
+
+  /* Sidebar — Deep Navy */
+  --color-sidebar:              #1a1a2e;
+  --color-sidebar-foreground:   #f8f9fa;
+  --color-sidebar-muted:        #94a3b8;
+  --color-sidebar-accent:       #16213e;
+  --color-sidebar-accent-foreground: #f1f5f9;
+  --color-sidebar-border:       #16213e;
+  --color-sidebar-ring:         #e94560;
+
+  /* Status colours */
+  --color-status-todo:          #ec4899;   /* pink  */
+  --color-status-todo-bg:       #fdf2f8;
+  --color-status-inprogress:    #3b82f6;   /* blue  */
+  --color-status-inprogress-bg: #eff6ff;
+  --color-status-complete:      #10b981;   /* green */
+  --color-status-complete-bg:   #ecfdf5;
+  --color-status-warning:       #f59e0b;   /* amber */
+  --color-status-warning-bg:    #fffbeb;
+  --color-status-overdue:       #ef4444;   /* red   */
+  --color-status-overdue-bg:    #fef2f2;
+
+  --color-success:          #10b981;
+  --color-success-foreground: #ffffff;
+  --color-warning:          #f59e0b;
+  --color-warning-foreground: #ffffff;
+
+  /* Charts */
+  --color-chart-1: #1a1a2e;
+  --color-chart-2: #e94560;
+  --color-chart-3: #10b981;
+  --color-chart-4: #f59e0b;
+  --color-chart-5: #3b82f6;
+
+  /* Radius */
+  --radius: 0.5rem;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 8px);
+
+  /* Fonts */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
 }
 
+/* ─── Dark mode overrides ─────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  @theme inline {
+    --color-background:       #0f172a;
+    --color-foreground:       #f8fafc;
+    --color-card:             #1e293b;
+    --color-card-foreground:  #f8fafc;
+    --color-popover:          #1e293b;
+    --color-popover-foreground: #f8fafc;
+    --color-secondary:        #1e293b;
+    --color-secondary-foreground: #f8fafc;
+    --color-muted:            #1e293b;
+    --color-muted-foreground: #94a3b8;
+    --color-border:           #334155;
+    --color-input:            #334155;
   }
 }
 
+/* ─── Base styles ─────────────────────────────────────────────── */
+* {
+  border-color: var(--color-border);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
