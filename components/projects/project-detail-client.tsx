@@ -12,7 +12,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar, Users, AlertCircle } from "lucide-react"
+import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar, AlertCircle } from "lucide-react"
+import { TasksTab } from "@/components/projects/tasks/tasks-tab"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
 import { updateProject } from "@/app/actions/projects"
 import { useToast } from "@/hooks/use-toast"
@@ -79,18 +80,22 @@ function getProjectDates(phases: unknown) {
   }
 }
 
+type StudioUser = { id: string; name: string; profile_photo_url: string | null; role: string }
+
 export function ProjectDetailClient({
   project,
   taskCounts,
   upcomingTasks,
   userRole,
   currentUserId,
+  studioUsers,
 }: {
   project: Project
   taskCounts: TaskCounts
   upcomingTasks: UpcomingTask[]
   userRole: string
   currentUserId: string
+  studioUsers: StudioUser[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -336,14 +341,30 @@ export function ProjectDetailClient({
             </div>
           </TabsContent>
 
+          {/* ── Tasks Tab ── */}
+          <TabsContent value="tasks">
+            <TasksTab
+              projectId={localProject.id}
+              projectPhases={
+                (Array.isArray(localProject.phases)
+                  ? (localProject.phases as Array<{ id: string; name: string; color: string }>)
+                  : []
+                ).filter((p) => p.id && p.name)
+              }
+              userRole={userRole}
+              currentUserId={currentUserId}
+              studioUsers={studioUsers}
+            />
+          </TabsContent>
+
           {/* ── Placeholder tabs ── */}
-          {["tasks", "documents", "procurement", "finance", "site", "meetings"].map((tab) => (
+          {["documents", "procurement", "finance", "site", "meetings"].map((tab) => (
             <TabsContent key={tab} value={tab}>
               <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
                 <AlertCircle className="w-10 h-10 text-muted-foreground/50" />
                 <div>
                   <p className="font-semibold capitalize">{tab}</p>
-                  <p className="text-sm text-muted-foreground mt-1">Coming in Sprint 3</p>
+                  <p className="text-sm text-muted-foreground mt-1">Coming in Sprint 4</p>
                 </div>
               </div>
             </TabsContent>

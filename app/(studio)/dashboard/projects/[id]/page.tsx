@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { getProject, getProjectTaskCounts, getUpcomingTasks } from "@/app/actions/projects"
+import { getProject, getProjectTaskCounts, getUpcomingTasks, getStudioUsers } from "@/app/actions/projects"
 import { ProjectDetailClient } from "@/components/projects/project-detail-client"
 
 export const metadata: Metadata = { title: "Project" }
@@ -28,9 +28,10 @@ export default async function ProjectDetailPage({
     notFound()
   }
 
-  const [taskCounts, upcomingTasks] = await Promise.all([
+  const [taskCounts, upcomingTasks, studioUsers] = await Promise.all([
     getProjectTaskCounts(id),
     getUpcomingTasks(id),
+    getStudioUsers(),
   ])
 
   return (
@@ -40,6 +41,7 @@ export default async function ProjectDetailPage({
       upcomingTasks={upcomingTasks}
       userRole={profile?.role ?? "designer"}
       currentUserId={user!.id}
+      studioUsers={studioUsers}
     />
   )
 }

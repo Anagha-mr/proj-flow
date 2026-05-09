@@ -444,13 +444,18 @@ export interface Database {
           id: string
           studio_id: string
           project_id: string
+          parent_task_id: string | null
           title: string
           description: string | null
           status: string
           priority: string
           phase_tag: string | null
+          room_tag: string | null
           start_date: string | null
           due_date: string | null
+          progress_percent: number
+          is_recurring: boolean
+          position: number
           created_by: string | null
           created_at: string
           updated_at: string
@@ -459,13 +464,18 @@ export interface Database {
           id?: string
           studio_id: string
           project_id: string
+          parent_task_id?: string | null
           title: string
           description?: string | null
           status?: string
           priority?: string
           phase_tag?: string | null
+          room_tag?: string | null
           start_date?: string | null
           due_date?: string | null
+          progress_percent?: number
+          is_recurring?: boolean
+          position?: number
           created_by?: string | null
         }
         Update: {
@@ -474,8 +484,13 @@ export interface Database {
           status?: string
           priority?: string
           phase_tag?: string | null
+          room_tag?: string | null
           start_date?: string | null
           due_date?: string | null
+          progress_percent?: number
+          is_recurring?: boolean
+          position?: number
+          parent_task_id?: string | null
         }
         Relationships: [
           {
@@ -493,6 +508,101 @@ export interface Database {
             referencedColumns: ["id"]
           }
         ]
+      }
+      task_assignees: {
+        Row: {
+          id: string
+          task_id: string
+          user_id: string
+          studio_id: string
+          assigned_at: string
+          assigned_by_id: string | null
+        }
+        Insert: {
+          id?: string
+          task_id: string
+          user_id: string
+          studio_id: string
+          assigned_at?: string
+          assigned_by_id?: string | null
+        }
+        Update: {
+          assigned_by_id?: string | null
+        }
+        Relationships: []
+      }
+      task_comments: {
+        Row: {
+          id: string
+          task_id: string
+          studio_id: string
+          author_id: string
+          author_type: string
+          body: string
+          mentions: string[]
+          is_client_visible: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          task_id: string
+          studio_id: string
+          author_id: string
+          author_type?: string
+          body: string
+          mentions?: string[]
+          is_client_visible?: boolean
+        }
+        Update: {
+          body?: string
+          is_client_visible?: boolean
+        }
+        Relationships: []
+      }
+      task_attachments: {
+        Row: {
+          id: string
+          task_id: string
+          studio_id: string
+          uploaded_by_id: string
+          file_name: string
+          file_url: string
+          file_type: string | null
+          file_size_bytes: number | null
+          uploaded_at: string
+        }
+        Insert: {
+          id?: string
+          task_id: string
+          studio_id: string
+          uploaded_by_id: string
+          file_name: string
+          file_url: string
+          file_type?: string | null
+          file_size_bytes?: number | null
+        }
+        Update: {
+          file_name?: string
+          file_url?: string
+        }
+        Relationships: []
+      }
+      task_dependencies: {
+        Row: {
+          id: string
+          task_id: string
+          depends_on_task_id: string
+          studio_id: string
+        }
+        Insert: {
+          id?: string
+          task_id: string
+          depends_on_task_id: string
+          studio_id: string
+        }
+        Update: Record<string, never>
+        Relationships: []
       }
     }
     Views: {
