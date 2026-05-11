@@ -17,7 +17,7 @@ export default async function ProjectDetailPage({
 
   const { data: profile } = await supabase
     .from("users")
-    .select("role")
+    .select("role, studio_id")
     .eq("id", user!.id)
     .single()
 
@@ -41,6 +41,7 @@ export default async function ProjectDetailPage({
       upcomingTasks={upcomingTasks}
       userRole={profile?.role ?? "designer"}
       currentUserId={user!.id}
+      studioId={profile?.studio_id ?? ""}
       studioUsers={studioUsers}
     />
   )

@@ -590,6 +590,107 @@ export async function getTaskAttachments(taskId: string): Promise<TaskAttachment
   }))
 }
 
+// ─── addTaskDependency ────────────────────────────────────────
+
+export async function addTaskDependency(taskId: string, dependsOnTaskId: string) {
+  const { supabase, studioId } = await getAuthContext()
+
+  // One-level circular check: does dependsOnTaskId already depend on taskId?
+  const { data: existing } = await supabase
+    .from("task_dependencies")
+    .select("id")
+    .eq("task_id", dependsOnTaskId)
+    .eq("depends_on_task_id", taskId)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  if (existing) throw new Error("Circular dependency detected")
+
+  const { data, error } = await supabase
+    .from("task_dependencies")
+    .insert({ task_id: taskId, depends_on_task_id: dependsOnTaskId, studio_id: studioId })
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  const { data: task } = await supabase.from("tasks").select("project_id").eq("id", taskId).single()
+  if (task?.project_id) revalidatePath(`/dashboard/projects/${task.project_id}`)
+
+  return data
+}
+
+// ─── removeTaskDependency ─────────────────────────────────────
+
+export async function removeTaskDependency(taskId: string, dependsOnTaskId: string) {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { error } = await supabase
+    .from("task_dependencies")
+    .delete()
+    .eq("task_id", taskId)
+    .eq("depends_on_task_id", dependsOnTaskId)
+    .eq("studio_id", studioId)
+
+  if (error) throw new Error(error.message)
+
+  const { data: task } = await supabase.from("tasks").select("project_id").eq("id", taskId).single()
+  if (task?.project_id) revalidatePath(`/dashboard/projects/${task.project_id}`)
+}
+
+// ─── getTaskDependencies ──────────────────────────────────────
+
+export type TaskDependency = {
+  id: string
+  task_id: string
+  depends_on_task_id: string
+  task: { id: string; title: string; status: string; due_date: string | null }
+  depends_on_task: { id: string; title: string; status: string; due_date: string | null }
+}
+
+export async function getTaskDependencies(projectId: string): Promise<TaskDependency[]> {
+  const { supabase, studioId } = await getAuthContext()
+
+  // Fetch all task IDs in this project first
+  const { data: projectTasks } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("studio_id", studioId)
+
+  if (!projectTasks?.length) return []
+
+  const projectTaskIds = projectTasks.map((t) => t.id)
+
+  const { data, error } = await supabase
+    .from("task_dependencies")
+    .select("id, task_id, depends_on_task_id")
+    .in("task_id", projectTaskIds)
+    .eq("studio_id", studioId)
+
+  if (error) throw new Error(error.message)
+  if (!data?.length) return []
+
+  // Collect all task IDs we need details for
+  const allIds = [...new Set([...data.map((d) => d.task_id), ...data.map((d) => d.depends_on_task_id)])]
+
+  const { data: tasksData } = await supabase
+    .from("tasks")
+    .select("id, title, status, due_date")
+    .in("id", allIds)
+    .eq("studio_id", studioId)
+
+  const taskMap = new Map((tasksData ?? []).map((t) => [t.id, t]))
+
+  return data.map((d) => ({
+    id: d.id,
+    task_id: d.task_id,
+    depends_on_task_id: d.depends_on_task_id,
+    task: taskMap.get(d.task_id) ?? { id: d.task_id, title: "Unknown", status: "todo", due_date: null },
+    depends_on_task: taskMap.get(d.depends_on_task_id) ?? { id: d.depends_on_task_id, title: "Unknown", status: "todo", due_date: null },
+  }))
+}
+
 // ─── updateTaskAssignees ──────────────────────────────────────
 
 export async function addTaskAssignee(taskId: string, assigneeUserId: string) {

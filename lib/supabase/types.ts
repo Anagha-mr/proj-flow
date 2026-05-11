@@ -604,6 +604,334 @@ export interface Database {
         Update: Record<string, never>
         Relationships: []
       }
+      documents: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          name: string
+          category: string
+          file_url: string
+          file_type: string
+          file_size_bytes: number | null
+          version_number: number
+          version_status: string
+          access_level: string
+          uploaded_by_id: string
+          previous_version_id: string | null
+          share_token: string
+          share_token_expires_at: string | null
+          share_enabled: boolean
+          description: string | null
+          tags: string[] | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          name: string
+          category: string
+          file_url: string
+          file_type: string
+          file_size_bytes?: number | null
+          version_number?: number
+          version_status?: string
+          access_level?: string
+          uploaded_by_id: string
+          previous_version_id?: string | null
+          share_token?: string
+          share_token_expires_at?: string | null
+          share_enabled?: boolean
+          description?: string | null
+          tags?: string[] | null
+        }
+        Update: {
+          name?: string
+          category?: string
+          file_url?: string
+          file_type?: string
+          file_size_bytes?: number | null
+          version_number?: number
+          version_status?: string
+          access_level?: string
+          previous_version_id?: string | null
+          share_token_expires_at?: string | null
+          share_enabled?: boolean
+          description?: string | null
+          tags?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_project_id_fkey"
+            columns: ["project_id"]
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      document_access_logs: {
+        Row: {
+          id: string
+          document_id: string
+          studio_id: string
+          accessed_by_type: string
+          accessed_by_id: string | null
+          accessed_at: string
+          ip_address: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          id?: string
+          document_id: string
+          studio_id: string
+          accessed_by_type: string
+          accessed_by_id?: string | null
+          accessed_at?: string
+          ip_address?: string | null
+          user_agent?: string | null
+        }
+        Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: "document_access_logs_document_id_fkey"
+            columns: ["document_id"]
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_access_logs_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      procurement_schedules: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          name: string
+          view_type: string
+          status: string
+          owner_id: string | null
+          is_client_published: boolean
+          shared_with: Json
+          is_archived: boolean
+          client_can_view_supplier: boolean
+          client_can_view_brand: boolean
+          client_can_view_pricing: boolean
+          client_can_view_details: boolean
+          client_can_approve: boolean
+          share_token: string
+          share_token_expires_at: string | null
+          share_enabled: boolean
+          created_by_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          name?: string
+          view_type?: string
+          status?: string
+          owner_id?: string | null
+          is_client_published?: boolean
+          shared_with?: Json
+          is_archived?: boolean
+          client_can_view_supplier?: boolean
+          client_can_view_brand?: boolean
+          client_can_view_pricing?: boolean
+          client_can_view_details?: boolean
+          client_can_approve?: boolean
+          share_token?: string
+          share_token_expires_at?: string | null
+          share_enabled?: boolean
+          created_by_id?: string | null
+        }
+        Update: {
+          name?: string
+          view_type?: string
+          status?: string
+          owner_id?: string | null
+          is_client_published?: boolean
+          shared_with?: Json
+          is_archived?: boolean
+          client_can_view_supplier?: boolean
+          client_can_view_brand?: boolean
+          client_can_view_pricing?: boolean
+          client_can_view_details?: boolean
+          client_can_approve?: boolean
+          share_token_expires_at?: string | null
+          share_enabled?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_schedules_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_schedules_project_id_fkey"
+            columns: ["project_id"]
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      procurement_items: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          schedule_id: string
+          room_or_category: string | null
+          name: string
+          description: string | null
+          product_code: string | null
+          brand: string | null
+          supplier_name: string | null
+          source_url: string | null
+          dimensions_length: number | null
+          dimensions_height: number | null
+          dimensions_depth: number | null
+          dimensions_unit: string
+          finish: string | null
+          material: string | null
+          quantity: number
+          unit_cost: number
+          total_cost: number
+          image_url: string | null
+          quotation_attachment_url: string | null
+          in_stock: boolean | null
+          is_flagged: boolean
+          is_archived: boolean
+          position: number
+          created_by_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          schedule_id: string
+          room_or_category?: string | null
+          name: string
+          description?: string | null
+          product_code?: string | null
+          brand?: string | null
+          supplier_name?: string | null
+          source_url?: string | null
+          dimensions_length?: number | null
+          dimensions_height?: number | null
+          dimensions_depth?: number | null
+          dimensions_unit?: string
+          finish?: string | null
+          material?: string | null
+          quantity?: number
+          unit_cost?: number
+          image_url?: string | null
+          quotation_attachment_url?: string | null
+          in_stock?: boolean | null
+          is_flagged?: boolean
+          is_archived?: boolean
+          position?: number
+          created_by_id?: string | null
+        }
+        Update: {
+          room_or_category?: string | null
+          name?: string
+          description?: string | null
+          product_code?: string | null
+          brand?: string | null
+          supplier_name?: string | null
+          source_url?: string | null
+          dimensions_length?: number | null
+          dimensions_height?: number | null
+          dimensions_depth?: number | null
+          dimensions_unit?: string
+          finish?: string | null
+          material?: string | null
+          quantity?: number
+          unit_cost?: number
+          image_url?: string | null
+          quotation_attachment_url?: string | null
+          in_stock?: boolean | null
+          is_flagged?: boolean
+          is_archived?: boolean
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_items_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_items_schedule_id_fkey"
+            columns: ["schedule_id"]
+            referencedRelation: "procurement_schedules"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      procurement_item_status: {
+        Row: {
+          id: string
+          item_id: string
+          studio_id: string
+          curation_status: string
+          client_approval_status: string
+          procurement_status: string
+          payment_status: string
+          client_comment: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          item_id: string
+          studio_id: string
+          curation_status?: string
+          client_approval_status?: string
+          procurement_status?: string
+          payment_status?: string
+          client_comment?: string | null
+        }
+        Update: {
+          curation_status?: string
+          client_approval_status?: string
+          procurement_status?: string
+          payment_status?: string
+          client_comment?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_item_status_item_id_fkey"
+            columns: ["item_id"]
+            referencedRelation: "procurement_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_item_status_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never

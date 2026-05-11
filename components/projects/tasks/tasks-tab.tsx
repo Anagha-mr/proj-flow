@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { LayoutGrid, List, BarChart2, Plus, Search, ChevronDown } from "lucide-react"
+import { LayoutGrid, List, BarChart2, Plus, Search, ChevronDown, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -11,20 +11,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  Tooltip,
-  TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { getTasks, createTask } from "@/app/actions/tasks"
-import type { TaskWithDetails } from "@/app/actions/tasks"
+import { getTasks, createTask, getTaskDependencies } from "@/app/actions/tasks"
+import type { TaskWithDetails, TaskDependency } from "@/app/actions/tasks"
 import { KanbanView } from "./kanban-view"
 import { ListView } from "./list-view"
+import { GanttView } from "./gantt-view"
 import { TaskDetailPanel } from "./task-detail-panel"
 
-type PhaseItem = { id: string; name: string; color: string }
+type PhaseItem = { id: string; name: string; color: string; start_date?: string; end_date?: string }
 type StudioUser = { id: string; name: string; profile_photo_url: string | null; role: string }
 
 const GROUP_OPTIONS = [
@@ -54,20 +52,29 @@ interface Props {
 export function TasksTab({ projectId, projectPhases, userRole, currentUserId, studioUsers }: Props) {
   const { toast } = useToast()
   const [tasks, setTasks] = useState<TaskWithDetails[]>([])
+  const [dependencies, setDependencies] = useState<TaskDependency[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<"kanban" | "list">("kanban")
+  const [view, setView] = useState<"kanban" | "list" | "gantt">("kanban")
   const [groupBy, setGroupBy] = useState("phase")
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [search, setSearch] = useState("")
   const [selectedTask, setSelectedTask] = useState<TaskWithDetails | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [overduesDismissed, setOverduesDismissed] = useState(false)
 
   const isIntern = userRole === "intern"
 
   const fetchTasks = useCallback(() => {
     setLoading(true)
-    getTasks(projectId)
-      .then((data) => setTasks(data))
+    setOverduesDismissed(false)
+    Promise.all([
+      getTasks(projectId),
+      getTaskDependencies(projectId),
+    ])
+      .then(([taskData, depData]) => {
+        setTasks(taskData)
+        setDependencies(depData)
+      })
       .catch(() => toast({ title: "Failed to load tasks", variant: "destructive" }))
       .finally(() => setLoading(false))
   }, [projectId, toast])
@@ -90,13 +97,19 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
   const inProgressCnt = internTasks.filter((t) => t.status === "in_progress" || t.status === "review").length
   const doneCnt = internTasks.filter((t) => t.status === "done").length
 
+  // Overdue tasks
+  const overdueTasks = tasks.filter((t) => {
+    if (t.status === "done") return false
+    if (!t.due_date) return false
+    return new Date(t.due_date) < new Date()
+  })
+
   function openTask(task: TaskWithDetails) {
     setSelectedTask(task)
     setPanelOpen(true)
   }
 
   function openNewTask() {
-    // Create a temporary "new task" template
     const newTaskTemplate: TaskWithDetails = {
       id: "",
       studio_id: "",
@@ -120,7 +133,6 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
       subtask_count: 0,
       attachment_count: 0,
     }
-    // Actually create it first, then open the panel
     createTask({
       project_id: projectId,
       title: "New Task",
@@ -178,6 +190,21 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, title: newTitle } : t)))
   }, [])
 
+  // Dependencies for the selected task
+  const selectedTaskDependencies = selectedTask
+    ? dependencies
+        .filter((d) => d.task_id === selectedTask.id)
+        .map((d) => ({
+          task_id: d.task_id,
+          depends_on_task_id: d.depends_on_task_id,
+          depends_on_task: d.depends_on_task,
+        }))
+    : []
+
+  const allProjectTasksForPicker = selectedTask
+    ? tasks.filter((t) => t.id !== selectedTask.id)
+    : []
+
   return (
     <TooltipProvider>
       <div className="flex flex-col gap-4">
@@ -207,20 +234,15 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
               <List className="w-3.5 h-3.5" />
               List
             </Button>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-3 rounded-none gap-1.5 opacity-40 cursor-not-allowed"
-                  disabled
-                >
-                  <BarChart2 className="w-3.5 h-3.5" />
-                  Timeline
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Coming in Sprint 3B</TooltipContent>
-            </Tooltip>
+            <Button
+              variant={view === "gantt" ? "default" : "ghost"}
+              size="sm"
+              className={`h-8 px-3 rounded-none gap-1.5 hidden sm:flex ${view === "gantt" ? "bg-[#1a1a2e] text-white hover:bg-[#1a1a2e]" : ""}`}
+              onClick={() => setView("gantt")}
+            >
+              <BarChart2 className="w-3.5 h-3.5" />
+              Timeline
+            </Button>
           </div>
 
           <Button
@@ -299,6 +321,28 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
           </div>
         </div>
 
+        {/* Overdue alert banner */}
+        {overdueTasks.length > 0 && !overduesDismissed && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg bg-[#e94560]/10 border border-[#e94560]/20 text-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-[#e94560] shrink-0" />
+              <span className="text-[#e94560] font-medium">
+                {overdueTasks.length} overdue {overdueTasks.length === 1 ? "task" : "tasks"}
+              </span>
+              <span className="text-muted-foreground">
+                — {overdueTasks.map((t) => t.title).slice(0, 2).join(", ")}
+                {overdueTasks.length > 2 ? ` +${overdueTasks.length - 2} more` : ""}
+              </span>
+            </div>
+            <button
+              onClick={() => setOverduesDismissed(true)}
+              className="text-muted-foreground hover:text-foreground shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Loading skeleton */}
         {loading && (
           <div className="flex gap-4 pt-2">
@@ -338,6 +382,16 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
             onCreateTask={handleCreateTask}
           />
         )}
+
+        {!loading && view === "gantt" && (
+          <GanttView
+            tasks={filteredTasks}
+            projectPhases={projectPhases}
+            dependencies={dependencies}
+            onTaskClick={openTask}
+            onStatusChange={handleStatusChange}
+          />
+        )}
       </div>
 
       {/* Task Detail Panel */}
@@ -350,6 +404,9 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
         currentUserId={currentUserId}
         onUpdateTask={handleUpdateTask}
         onDeleteTask={handleDeleteTask}
+        dependencies={selectedTaskDependencies}
+        allProjectTasks={allProjectTasksForPicker}
+        onDependencyChange={fetchTasks}
       />
     </TooltipProvider>
   )

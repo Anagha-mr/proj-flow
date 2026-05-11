@@ -32,6 +32,8 @@ import {
   deleteTaskAttachment,
   addTaskAssignee,
   removeTaskAssignee,
+  addTaskDependency,
+  removeTaskDependency,
 } from "@/app/actions/tasks"
 import type { TaskWithDetails, TaskComment, TaskAttachment } from "@/app/actions/tasks"
 
@@ -59,6 +61,12 @@ const PRIORITY_OPTIONS = [
 type StudioUser = { id: string; name: string; profile_photo_url: string | null; role: string }
 type PhaseItem = { id: string; name: string; color: string }
 
+type DepEntry = {
+  task_id: string
+  depends_on_task_id: string
+  depends_on_task: { id: string; title: string; status: string }
+}
+
 interface Props {
   task: TaskWithDetails | null
   open: boolean
@@ -69,6 +77,9 @@ interface Props {
   onUpdateTask: (id: string, updates: Partial<TaskWithDetails>) => void
   onDeleteTask: (id: string) => void
   onCreateSubtask?: (subtask: TaskWithDetails) => void
+  dependencies?: DepEntry[]
+  allProjectTasks?: TaskWithDetails[]
+  onDependencyChange?: () => void
 }
 
 export function TaskDetailPanel({
@@ -80,6 +91,9 @@ export function TaskDetailPanel({
   currentUserId,
   onUpdateTask,
   onDeleteTask,
+  dependencies = [],
+  allProjectTasks = [],
+  onDependencyChange,
 }: Props) {
   const { toast } = useToast()
   const [subtasks, setSubtasks] = useState<TaskWithDetails[]>([])
@@ -275,6 +289,27 @@ export function TaskDetailPanel({
       onClose()
     } catch {
       toast({ title: "Failed to delete task", variant: "destructive" })
+    }
+  }
+
+  async function handleAddDependency(dependsOnTaskId: string) {
+    try {
+      await addTaskDependency(task!.id, dependsOnTaskId)
+      onDependencyChange?.()
+      toast({ title: "Dependency added" })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to add dependency"
+      toast({ title: msg, variant: "destructive" })
+    }
+  }
+
+  async function handleRemoveDependency(dependsOnTaskId: string) {
+    try {
+      await removeTaskDependency(task!.id, dependsOnTaskId)
+      onDependencyChange?.()
+      toast({ title: "Dependency removed" })
+    } catch {
+      toast({ title: "Failed to remove dependency", variant: "destructive" })
     }
   }
 
@@ -569,21 +604,75 @@ export function TaskDetailPanel({
                 </div>
               </div>
 
-              {/* Dependencies — Sprint 3B placeholder */}
+              {/* Dependencies */}
               <div className="px-5 py-4 border-b">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium">Dependencies</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-xs px-2"
-                    onClick={() => toast({ title: "Coming in Sprint 3B" })}
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    Add dependency
-                  </Button>
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Depends On
+                  </p>
+
+                  {dependencies.map((dep) => (
+                    <div
+                      key={dep.depends_on_task_id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-md border text-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${
+                          dep.depends_on_task.status === "done"
+                            ? "bg-green-500"
+                            : dep.depends_on_task.status === "in_progress"
+                            ? "bg-blue-500"
+                            : "bg-gray-300"
+                        }`} />
+                        <span className="truncate">{dep.depends_on_task.title}</span>
+                        {dep.depends_on_task.status !== "done" && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Dependency not yet complete" />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleRemoveDependency(dep.depends_on_task_id)}
+                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 self-start">
+                        <Plus className="w-3 h-3" />
+                        Add dependency
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                        {allProjectTasks
+                          .filter(
+                            (t) =>
+                              t.id !== task.id &&
+                              !dependencies.some((d) => d.depends_on_task_id === t.id)
+                          )
+                          .map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => handleAddDependency(t.id)}
+                              className="text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors truncate"
+                            >
+                              {t.title}
+                            </button>
+                          ))}
+                        {allProjectTasks.filter(
+                          (t) =>
+                            t.id !== task.id &&
+                            !dependencies.some((d) => d.depends_on_task_id === t.id)
+                        ).length === 0 && (
+                          <p className="text-xs text-muted-foreground p-2">No other tasks</p>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
-                <p className="text-xs text-muted-foreground">No dependencies</p>
               </div>
 
               {/* Attachments */}
