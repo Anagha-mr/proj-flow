@@ -932,6 +932,212 @@ export interface Database {
           }
         ]
       }
+      invoices: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          client_id: string
+          invoice_number: string
+          line_items: Json
+          subtotal: number
+          gst_amount: number
+          total: number
+          status: string
+          issue_date: string
+          due_date: string | null
+          sent_at: string | null
+          reminder_sent_at: string[] | null
+          notes: string | null
+          created_by_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          client_id: string
+          invoice_number: string
+          line_items?: Json
+          subtotal?: number
+          gst_amount?: number
+          total?: number
+          status?: string
+          issue_date?: string
+          due_date?: string | null
+          sent_at?: string | null
+          reminder_sent_at?: string[] | null
+          notes?: string | null
+          created_by_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          invoice_number?: string
+          line_items?: Json
+          subtotal?: number
+          gst_amount?: number
+          total?: number
+          status?: string
+          issue_date?: string
+          due_date?: string | null
+          sent_at?: string | null
+          reminder_sent_at?: string[] | null
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_project_id_fkey"
+            columns: ["project_id"]
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_client_id_fkey"
+            columns: ["client_id"]
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      invoice_payments: {
+        Row: {
+          id: string
+          invoice_id: string
+          studio_id: string
+          amount: number
+          payment_date: string
+          bank_reference: string | null
+          notes: string | null
+          recorded_by_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          studio_id: string
+          amount: number
+          payment_date: string
+          bank_reference?: string | null
+          notes?: string | null
+          recorded_by_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          amount?: number
+          payment_date?: string
+          bank_reference?: string | null
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payments_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      expense_entries: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          category: string
+          description: string
+          amount: number
+          expense_date: string
+          reference: string | null
+          recorded_by_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          category: string
+          description: string
+          amount: number
+          expense_date?: string
+          reference?: string | null
+          recorded_by_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          description?: string
+          amount?: number
+          expense_date?: string
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_entries_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_entries_project_id_fkey"
+            columns: ["project_id"]
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          id: string
+          studio_id: string
+          recipient_type: string
+          recipient_id: string
+          template_id: string
+          variables: Json
+          status: string
+          sent_at: string | null
+          project_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          recipient_type: string
+          recipient_id: string
+          template_id: string
+          variables?: Json
+          status?: string
+          sent_at?: string | null
+          project_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          status?: string
+          sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_studio_id_fkey"
+            columns: ["studio_id"]
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,8 +16,10 @@ import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar, AlertCirc
 import { TasksTab } from "@/components/projects/tasks/tasks-tab"
 import { DocumentsTab } from "@/components/projects/documents/documents-tab"
 import { ProcurementTab } from "@/components/projects/procurement/procurement-tab"
+import { FinanceTab } from "@/components/projects/finance/finance-tab"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
 import { updateProject } from "@/app/actions/projects"
+import { getProjectFinanceSummary } from "@/app/actions/finance"
 import { useToast } from "@/hooks/use-toast"
 
 type TaskCounts = { total: number; todo: number; in_progress: number; done: number }
@@ -92,6 +94,11 @@ export function ProjectDetailClient({
   currentUserId,
   studioId,
   studioUsers,
+  studioStateCode,
+  clientStateCode,
+  studioName,
+  studioGstin,
+  studioBankDetails,
 }: {
   project: Project
   taskCounts: TaskCounts
@@ -100,16 +107,33 @@ export function ProjectDetailClient({
   currentUserId: string
   studioId: string
   studioUsers: StudioUser[]
+  studioStateCode: string
+  clientStateCode: string
+  studioName: string
+  studioGstin: string | null
+  studioBankDetails: Record<string, string> | null
 }) {
   const router = useRouter()
   const { toast } = useToast()
   const [editOpen, setEditOpen] = useState(false)
   const [localProject, setLocalProject] = useState(project)
   const [saving, setSaving] = useState(false)
+  const [financeSummary, setFinanceSummary] = useState<{
+    total_invoiced: number; total_cost: number; contract_value: number | null
+  } | null>(null)
 
   const typeMeta = TYPE_BADGE[localProject.type] ?? TYPE_BADGE.other
   const statusMeta = STATUS_BADGE[localProject.status] ?? STATUS_BADGE.active
   const canEditFinance = userRole === "owner" || userRole === "senior_designer"
+
+  // Load finance summary for Overview tab stat cards
+  useEffect(() => {
+    if (!canEditFinance) return
+    getProjectFinanceSummary(project.id)
+      .then((s) => setFinanceSummary({ total_invoiced: s.total_invoiced, total_cost: s.total_cost, contract_value: s.contract_value }))
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id])
   const { start, end } = getProjectDates(localProject.phases)
   const daysRemaining = end ? differenceInDays(new Date(end), new Date()) : null
 
@@ -222,8 +246,16 @@ export function ProjectDetailClient({
                   <CardContent>
                     {canEditFinance ? (
                       <>
-                        <p className="text-2xl font-bold">₹ —</p>
-                        <p className="text-xs text-muted-foreground mt-1">Contract value</p>
+                        <p className="text-2xl font-bold">
+                          {financeSummary
+                            ? financeSummary.total_invoiced.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
+                            : "₹ —"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {financeSummary?.contract_value
+                            ? `of ${financeSummary.contract_value.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })} contract`
+                            : "Total invoiced"}
+                        </p>
                       </>
                     ) : (
                       <p className="text-sm text-muted-foreground">—</p>
@@ -242,8 +274,12 @@ export function ProjectDetailClient({
                   <CardContent>
                     {canEditFinance ? (
                       <>
-                        <p className="text-2xl font-bold">₹0</p>
-                        <p className="text-xs text-muted-foreground mt-1">Current expenditure</p>
+                        <p className="text-2xl font-bold">
+                          {financeSummary
+                            ? financeSummary.total_cost.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
+                            : "₹ —"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Total project cost</p>
                       </>
                     ) : (
                       <p className="text-sm text-muted-foreground">—</p>
@@ -388,8 +424,24 @@ export function ProjectDetailClient({
             />
           </TabsContent>
 
+          {/* ── Finance Tab ── */}
+          <TabsContent value="finance">
+            <FinanceTab
+              projectId={localProject.id}
+              studioId={studioId}
+              userRole={userRole}
+              currentUserId={currentUserId}
+              studioStateCode={studioStateCode}
+              clientStateCode={clientStateCode}
+              studioName={studioName}
+              studioGstin={studioGstin}
+              studioBankDetails={studioBankDetails}
+              clientId={localProject.client?.id ?? ""}
+            />
+          </TabsContent>
+
           {/* ── Placeholder tabs ── */}
-          {["finance", "site", "meetings"].map((tab) => (
+          {["site", "meetings"].map((tab) => (
             <TabsContent key={tab} value={tab}>
               <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
                 <AlertCircle className="w-10 h-10 text-muted-foreground/50" />
