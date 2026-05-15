@@ -21,11 +21,17 @@ import { SiteTab } from "@/components/projects/site/site-tab"
 import { MeetingsTab } from "@/components/projects/meetings/meetings-tab"
 import { RfiTab } from "@/components/projects/rfis/rfi-tab"
 import { SnagTab } from "@/components/projects/snags/snag-tab"
+import { TimeTab } from "@/components/projects/time/time-tab"
+import { SpecTab } from "@/components/projects/spec/spec-tab"
+import { StagePaymentsSection } from "@/components/projects/contractors/stage-payments-section"
 import type { SiteUpdate } from "@/app/actions/site"
 import type { Meeting } from "@/app/actions/meetings"
 import type { RFI } from "@/app/actions/rfis"
 import type { SnagItem } from "@/app/actions/snags"
 import type { Contractor } from "@/app/actions/contractors"
+import type { TimeEntry } from "@/app/actions/time-tracking"
+import type { StagePayment } from "@/app/actions/stage-payments"
+import type { SpecItem } from "@/app/actions/spec"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
 import { updateProject } from "@/app/actions/projects"
 import { getProjectFinanceSummary } from "@/app/actions/finance"
@@ -115,6 +121,10 @@ export function ProjectDetailClient({
   initialSnags,
   projectContractors,
   projectDocuments,
+  initialTimeEntries,
+  initialStagePayments,
+  initialSpecItems,
+  currentUserHourlyRate,
 }: {
   project: Project
   taskCounts: TaskCounts
@@ -135,6 +145,10 @@ export function ProjectDetailClient({
   initialSnags: SnagItem[]
   projectContractors: Contractor[]
   projectDocuments: Array<{ id: string; name: string }>
+  initialTimeEntries: TimeEntry[]
+  initialStagePayments: StagePayment[]
+  initialSpecItems: SpecItem[]
+  currentUserHourlyRate: number | null
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -225,15 +239,18 @@ export function ProjectDetailClient({
         <Tabs defaultValue="overview">
           <TabsList className="overflow-x-auto flex w-full justify-start h-auto bg-transparent border-b rounded-none p-0 gap-0 mb-6">
             {[
-              { label: "Overview",    value: "overview" },
-              { label: "Tasks",       value: "tasks" },
-              { label: "Documents",   value: "documents" },
-              { label: "Procurement", value: "procurement" },
-              { label: "Finance",     value: "finance" },
-              { label: "Site",        value: "site" },
-              { label: "Meetings",    value: "meetings" },
-              { label: "RFI",         value: "rfi" },
-              { label: "Snag List",   value: "snag-list" },
+              { label: "Overview",     value: "overview" },
+              { label: "Tasks",        value: "tasks" },
+              { label: "Documents",    value: "documents" },
+              { label: "Procurement",  value: "procurement" },
+              { label: "Finance",      value: "finance" },
+              { label: "Site",         value: "site" },
+              { label: "Meetings",     value: "meetings" },
+              { label: "RFI",          value: "rfi" },
+              { label: "Snag List",    value: "snag-list" },
+              { label: "Contractors",  value: "contractors" },
+              { label: "Time",         value: "time" },
+              { label: "Spec",         value: "spec" },
             ].map((tab) => (
               <TabsTrigger
                 key={tab.value}
@@ -511,6 +528,60 @@ export function ProjectDetailClient({
               currentUser={{ id: currentUserId, name: currentUserName, role: userRole }}
               projectContractors={projectContractors}
               studioUsers={studioUsers.map((u) => ({ id: u.id, name: u.name, role: u.role }))}
+            />
+          </TabsContent>
+
+          {/* ── Contractors Tab ── */}
+          <TabsContent value="contractors">
+            <div className="flex flex-col gap-6">
+              {/* Assigned contractors list */}
+              {projectContractors.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No contractors assigned to this project yet.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {projectContractors.map((c) => (
+                    <div key={c.id} className="bg-white border rounded-lg p-4">
+                      <p className="font-semibold">{c.company_name}</p>
+                      <p className="text-sm text-muted-foreground">{c.contact_name}</p>
+                      {c.phone && <p className="text-xs text-muted-foreground mt-1">{c.phone}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Stage Payments */}
+              <StagePaymentsSection
+                project={{ id: localProject.id }}
+                initialPayments={initialStagePayments}
+                projectContractors={projectContractors}
+                currentUser={{ id: currentUserId, role: userRole }}
+              />
+            </div>
+          </TabsContent>
+
+          {/* ── Time Tab ── */}
+          <TabsContent value="time">
+            <TimeTab
+              project={{
+                id: localProject.id,
+                studio_id: studioId,
+                name: localProject.name,
+                phases: (Array.isArray(localProject.phases)
+                  ? (localProject.phases as Array<{ name: string }>)
+                  : []
+                ),
+              }}
+              initialEntries={initialTimeEntries}
+              currentUser={{ id: currentUserId, name: currentUserName, role: userRole, hourly_rate: currentUserHourlyRate }}
+              studioUsers={studioUsers.map((u) => ({ id: u.id, name: u.name, role: u.role }))}
+            />
+          </TabsContent>
+
+          {/* ── Spec Tab ── */}
+          <TabsContent value="spec">
+            <SpecTab
+              project={{ id: localProject.id, studio_id: studioId, name: localProject.name }}
+              initialItems={initialSpecItems}
+              currentUser={{ id: currentUserId, role: userRole }}
             />
           </TabsContent>
         </Tabs>

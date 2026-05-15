@@ -9,6 +9,9 @@ import { getRfis } from "@/app/actions/rfis"
 import { getSnagItems } from "@/app/actions/snags"
 import { getProjectContractors } from "@/app/actions/contractors"
 import { getDocuments } from "@/app/actions/documents"
+import { getTimeEntries } from "@/app/actions/time-tracking"
+import { getStagePayments } from "@/app/actions/stage-payments"
+import { getSpecItems } from "@/app/actions/spec"
 
 export const metadata: Metadata = { title: "Project" }
 
@@ -23,7 +26,7 @@ export default async function ProjectDetailPage({
 
   const { data: profile } = await supabase
     .from("users")
-    .select("role, studio_id")
+    .select("role, studio_id, hourly_rate")
     .eq("id", user!.id)
     .single()
 
@@ -34,14 +37,12 @@ export default async function ProjectDetailPage({
     notFound()
   }
 
-  // Fetch studio details for Finance tab
   const { data: studio } = await supabase
     .from("studios")
     .select("name, state_code, gstin, bank_details")
     .eq("id", profile?.studio_id ?? "")
     .single()
 
-  // Fetch client state_code for GST split calculation
   let clientStateCode = ""
   if (project.client?.id) {
     const { data: clientRow } = await supabase
@@ -52,7 +53,20 @@ export default async function ProjectDetailPage({
     clientStateCode = clientRow?.state_code ?? ""
   }
 
-  const [taskCounts, upcomingTasks, studioUsers, initialSiteUpdates, initialMeetings, initialRfis, initialSnags, projectContractors, projectDocuments] = await Promise.all([
+  const [
+    taskCounts,
+    upcomingTasks,
+    studioUsers,
+    initialSiteUpdates,
+    initialMeetings,
+    initialRfis,
+    initialSnags,
+    projectContractors,
+    projectDocuments,
+    initialTimeEntries,
+    initialStagePayments,
+    initialSpecItems,
+  ] = await Promise.all([
     getProjectTaskCounts(id),
     getUpcomingTasks(id),
     getStudioUsers(),
@@ -62,6 +76,9 @@ export default async function ProjectDetailPage({
     getSnagItems(id).catch(() => []),
     getProjectContractors(id).catch(() => []),
     getDocuments(id).catch(() => []),
+    getTimeEntries(id).catch(() => []),
+    getStagePayments(id).catch(() => []),
+    getSpecItems(id).catch(() => []),
   ])
 
   const currentUserName = studioUsers.find((u) => u.id === user!.id)?.name ?? ""
@@ -87,6 +104,10 @@ export default async function ProjectDetailPage({
       initialSnags={initialSnags}
       projectContractors={projectContractors}
       projectDocuments={projectDocuments.map((d) => ({ id: d.id, name: d.name }))}
+      initialTimeEntries={initialTimeEntries}
+      initialStagePayments={initialStagePayments}
+      initialSpecItems={initialSpecItems}
+      currentUserHourlyRate={(profile?.hourly_rate as number | null) ?? null}
     />
   )
 }

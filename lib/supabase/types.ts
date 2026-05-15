@@ -88,6 +88,11 @@ export interface Database {
           whatsapp_number: string | null
           invoice_prefix: string
           onboarding_complete: boolean
+          wati_api_key: string | null
+          wati_api_url: string | null
+          resend_api_key: string | null
+          sending_email: string | null
+          sending_email_name: string | null
           created_at: string
         }
         Insert: {
@@ -109,6 +114,11 @@ export interface Database {
           whatsapp_number?: string | null
           invoice_prefix?: string
           onboarding_complete?: boolean
+          wati_api_key?: string | null
+          wati_api_url?: string | null
+          resend_api_key?: string | null
+          sending_email?: string | null
+          sending_email_name?: string | null
         }
         Update: {
           name?: string
@@ -128,6 +138,11 @@ export interface Database {
           whatsapp_number?: string | null
           invoice_prefix?: string
           onboarding_complete?: boolean
+          wati_api_key?: string | null
+          wati_api_url?: string | null
+          resend_api_key?: string | null
+          sending_email?: string | null
+          sending_email_name?: string | null
         }
         Relationships: []
       }

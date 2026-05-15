@@ -1,25 +1,26 @@
 import type { Metadata } from "next"
-import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { createClient } from "@/lib/supabase/server"
+import { getClientsWithDetails } from "@/app/actions/projects"
+import { ClientsClient } from "@/components/clients/clients-client"
 
 export const metadata: Metadata = { title: "Clients" }
 
-export default function ClientsPage() {
+export default async function ClientsPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user!.id)
+    .single()
+
+  const clients = await getClientsWithDetails().catch(() => [])
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clients</h1>
-          <p className="text-sm text-muted-foreground mt-1">Client profiles, approvals, and communication log</p>
-        </div>
-        <Button>
-          <Plus className="w-4 h-4" />
-          Add client
-        </Button>
-      </div>
-      <div className="flex items-center justify-center h-64 border border-dashed rounded-xl text-muted-foreground text-sm">
-        Client management coming in Sprint 2
-      </div>
-    </div>
+    <ClientsClient
+      initialClients={clients}
+      currentUserRole={profile?.role ?? "designer"}
+    />
   )
 }

@@ -2,6 +2,30 @@
 
 import { createServiceClient } from "@/lib/supabase/service"
 
+async function getWatiCredentials(studioId: string): Promise<{ url: string; key: string } | null> {
+  try {
+    const supabase = createServiceClient()
+    const { data } = await supabase
+      .from("studios")
+      .select("wati_api_url, wati_api_key")
+      .eq("id", studioId)
+      .single()
+
+    if (data?.wati_api_url && data?.wati_api_key) {
+      return { url: data.wati_api_url, key: data.wati_api_key }
+    }
+  } catch {
+    // fall through to env var fallback
+  }
+
+  // Env var fallback for dev/test
+  const url = process.env.WATI_API_URL
+  const key = process.env.WATI_API_KEY
+  if (url && key) return { url, key }
+
+  return null
+}
+
 async function sendWhatsAppMessage(params: {
   to: string
   templateName: string
@@ -14,11 +38,10 @@ async function sendWhatsAppMessage(params: {
   const supabase = createServiceClient()
 
   try {
-    const watiUrl = process.env.WATI_API_URL
-    const watiKey = process.env.WATI_API_KEY
+    const creds = await getWatiCredentials(params.studioId)
 
-    if (!watiUrl || !watiKey) {
-      console.warn("WATI credentials not configured — skipping WhatsApp send")
+    if (!creds) {
+      console.warn(`WATI credentials not configured for studio ${params.studioId} — skipping WhatsApp send`)
       return
     }
 
@@ -29,10 +52,10 @@ async function sendWhatsAppMessage(params: {
       parameters: Object.entries(params.variables).map(([name, value]) => ({ name, value })),
     }
 
-    const res = await fetch(`https://${watiUrl}/api/v1/sendTemplateMessage`, {
+    const res = await fetch(`https://${creds.url}/api/v1/sendTemplateMessage`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${watiKey}`,
+        Authorization: `Bearer ${creds.key}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -70,6 +93,43 @@ async function sendWhatsAppMessage(params: {
     } catch {
       // silent
     }
+  }
+}
+
+export async function sendEmail(params: {
+  to: string
+  subject: string
+  html: string
+  studioId: string
+}): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    const { data: studio } = await supabase
+      .from("studios")
+      .select("resend_api_key, sending_email, sending_email_name")
+      .eq("id", params.studioId)
+      .single()
+
+    const apiKey = studio?.resend_api_key ?? process.env.RESEND_API_KEY
+    const fromEmail = studio?.sending_email ?? process.env.RESEND_FROM_EMAIL
+    const fromName = studio?.sending_email_name ?? process.env.RESEND_FROM_NAME ?? "ProjectFlow"
+
+    if (!apiKey || !fromEmail) {
+      console.warn(`Resend credentials not configured for studio ${params.studioId} — skipping email`)
+      return
+    }
+
+    const { Resend } = await import("resend")
+    const resend = new Resend(apiKey)
+
+    await resend.emails.send({
+      from: `${fromName} <${fromEmail}>`,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+    })
+  } catch (err) {
+    console.error("sendEmail error:", err)
   }
 }
 
@@ -574,4 +634,52 @@ export async function notifyRfiEscalated(rfiId: string): Promise<void> {
 export async function notifyMeetingNotesShared(meetingId: string, recipientPhones: string[]): Promise<void> {
   // stub — real implementation in Sprint 9
   console.log('WHATSAPP STUB: meeting notes shared', meetingId, recipientPhones)
+}
+
+export async function notifyStagePaymentReleased(paymentId: string): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: payment } = await (supabase.from as any)("stage_payments")
+      .select("milestone_name, amount, project_id, contractor_id, studio_id")
+      .eq("id", paymentId)
+      .single()
+    if (!payment) return
+
+    const { data: project } = await supabase
+      .from("projects")
+      .select("name")
+      .eq("id", payment.project_id)
+      .single()
+    if (!project) return
+
+    const { data: contractor } = await supabase
+      .from("contractors")
+      .select("contact_name, whatsapp_number")
+      .eq("id", payment.contractor_id)
+      .single()
+    if (!contractor?.whatsapp_number) return
+
+    const studioUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/projects/${payment.project_id}`
+    const formatted = `₹${Number(payment.amount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+
+    await sendWhatsAppMessage({
+      to: contractor.whatsapp_number,
+      templateName: "stage_payment_released",
+      variables: {
+        "1": contractor.contact_name,
+        "2": formatted,
+        "3": project.name,
+        "4": payment.milestone_name,
+        "5": studioUrl,
+      },
+      studioId: payment.studio_id,
+      recipientType: "contractor",
+      recipientId: payment.contractor_id,
+      projectId: payment.project_id,
+    })
+  } catch (err) {
+    console.error("notifyStagePaymentReleased error:", err)
+  }
 }

@@ -1,12 +1,12 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { Json } from "@/lib/supabase/types"
 
 // ─── Helper: get current user's studio_id ────────────────────
 async function getAuthContext() {
-  const supabase = await createClient()
+  const supabase = await createSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
 
@@ -432,4 +432,164 @@ export async function getUpcomingTasks(projectId: string) {
 
   if (error) return []
   return data ?? []
+}
+
+// ─── getClientsWithDetails ────────────────────────────────────
+export async function getClientsWithDetails() {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data: clients, error } = await supabase
+    .from("clients")
+    .select("id, name, company, email, phone_primary, phone_secondary, whatsapp_number, portal_token, preferred_comms, available_hours, address_line1, address_line2, address_line3, postcode, state_code")
+    .eq("studio_id", studioId)
+    .order("name")
+
+  if (error) throw new Error(error.message)
+  const rows = clients ?? []
+
+  if (rows.length === 0) return []
+
+  const clientIds = rows.map((c: { id: string }) => c.id)
+
+  const { data: projectRows } = await supabase
+    .from("projects")
+    .select("client_id")
+    .eq("studio_id", studioId)
+    .in("client_id", clientIds)
+
+  const projectCount: Record<string, number> = {}
+  ;(projectRows ?? []).forEach((p: { client_id: string | null }) => {
+    if (p.client_id) projectCount[p.client_id] = (projectCount[p.client_id] ?? 0) + 1
+  })
+
+  const { data: invoiceRows } = await supabase
+    .from("invoices")
+    .select("client_id")
+    .eq("studio_id", studioId)
+    .in("client_id", clientIds)
+    .in("status", ["sent", "partial", "overdue"])
+
+  const outstandingCount: Record<string, number> = {}
+  ;(invoiceRows ?? []).forEach((i: { client_id: string }) => {
+    outstandingCount[i.client_id] = (outstandingCount[i.client_id] ?? 0) + 1
+  })
+
+  return rows.map((c: { id: string }) => ({
+    ...(c as Record<string, unknown>),
+    project_count: projectCount[c.id] ?? 0,
+    outstanding_invoices: outstandingCount[c.id] ?? 0,
+  }))
+}
+
+// ─── createClient (full fields) ───────────────────────────────
+export async function createClient(data: {
+  name: string
+  company?: string | null
+  email?: string | null
+  phone_primary?: string | null
+  phone_secondary?: string | null
+  whatsapp_number?: string | null
+  address_line1?: string | null
+  address_line2?: string | null
+  address_line3?: string | null
+  postcode?: string | null
+  state_code?: string | null
+  preferred_comms?: string | null
+  available_hours?: string | null
+}) {
+  const { supabase, studioId } = await getAuthContext()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: client, error } = await supabase
+    .from("clients")
+    .insert({ studio_id: studioId, ...data } as any)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/dashboard/clients")
+  return client
+}
+
+// ─── updateClient ─────────────────────────────────────────────
+export async function updateClient(
+  clientId: string,
+  data: Partial<{
+    name: string
+    company: string | null
+    email: string | null
+    phone_primary: string | null
+    phone_secondary: string | null
+    whatsapp_number: string | null
+    address_line1: string | null
+    address_line2: string | null
+    address_line3: string | null
+    postcode: string | null
+    state_code: string | null
+    preferred_comms: string | null
+    available_hours: string | null
+  }>
+) {
+  const { supabase, studioId } = await getAuthContext()
+
+  // Cast because the generated Update type is narrower than the actual table schema
+  const { data: client, error } = await supabase
+    .from("clients")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(data as any)
+    .eq("id", clientId)
+    .eq("studio_id", studioId)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/dashboard/clients")
+  return client
+}
+
+// ─── deleteClient ─────────────────────────────────────────────
+export async function deleteClient(clientId: string): Promise<void> {
+  const { supabase, studioId, role } = await getAuthContext()
+
+  if (role !== "owner" && role !== "senior_designer") {
+    throw new Error("Insufficient permissions")
+  }
+
+  const { error } = await supabase
+    .from("clients")
+    .delete()
+    .eq("id", clientId)
+    .eq("studio_id", studioId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/dashboard/clients")
+}
+
+// ─── regeneratePortalToken ────────────────────────────────────
+export async function regeneratePortalToken(clientId: string): Promise<string> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data: existing } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("studio_id", studioId)
+    .single()
+  if (!existing) throw new Error("Client not found")
+
+  const newToken = crypto.randomUUID()
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + 90)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await supabase
+    .from("clients")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update({ portal_token: newToken, portal_token_expires_at: expiresAt.toISOString() } as any)
+    .eq("id", clientId)
+    .eq("studio_id", studioId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/dashboard/clients")
+  return newToken
 }

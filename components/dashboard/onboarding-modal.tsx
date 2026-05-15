@@ -40,9 +40,9 @@ interface Props {
   studioName: string
 }
 
-type StepId = 0 | 1 | 2
+type StepId = 0 | 1 | 2 | 3
 
-const STEPS = ["Studio Identity", "Business Details", "Invite Team"] as const
+const STEPS = ["Studio Identity", "Business Details", "Invite Team", "WhatsApp"] as const
 
 // ─── Step indicator ───────────────────────────────────────────
 function StepIndicator({ current }: { current: StepId }) {
@@ -300,6 +300,67 @@ function Step3({
   )
 }
 
+// ─── Step 4: WhatsApp Integration ────────────────────────────
+function Step4({
+  watiUrl,
+  watiKey,
+  onWatiUrlChange,
+  onWatiKeyChange,
+}: {
+  watiUrl: string
+  watiKey: string
+  onWatiUrlChange: (v: string) => void
+  onWatiKeyChange: (v: string) => void
+}) {
+  const [showKey, setShowKey] = useState(false)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Connect your studio&apos;s WhatsApp Business number to automatically notify clients about
+        invoices, procurement approvals, and site updates. You&apos;ll need a{" "}
+        <span className="font-medium">Wati.io</span> account with a verified WhatsApp Business number.
+      </p>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium">WATI API URL</label>
+        <input
+          value={watiUrl}
+          onChange={(e) => onWatiUrlChange(e.target.value)}
+          placeholder="live-mt-server.wati.io"
+          className="flex h-9 w-full rounded-[var(--radius)] border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <p className="text-xs text-muted-foreground">Host from your WATI dashboard — no https:// prefix.</p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium">WATI API Key</label>
+        <div className="relative">
+          <input
+            type={showKey ? "text" : "password"}
+            value={watiKey}
+            onChange={(e) => onWatiKeyChange(e.target.value)}
+            placeholder="eyJ..."
+            className="flex h-9 w-full rounded-[var(--radius)] border border-input bg-transparent px-3 py-1 pr-10 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {showKey ? "Hide" : "Show"}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground rounded-md border border-border bg-muted/50 px-3 py-2">
+        You can skip this step and connect later via{" "}
+        <span className="font-medium">Settings → Integrations</span>.
+      </p>
+    </div>
+  )
+}
+
 // ─── Main Modal ───────────────────────────────────────────────
 export function OnboardingModal({ studioId, studioName: initialStudioName }: Props) {
   const router = useRouter()
@@ -327,6 +388,10 @@ export function OnboardingModal({ studioId, studioName: initialStudioName }: Pro
 
   // Step 3 state
   const [invites, setInvites] = useState<InviteRow[]>([])
+
+  // Step 4 state
+  const [watiUrl, setWatiUrl] = useState("")
+  const [watiKey, setWatiKey] = useState("")
 
   // ── Handlers ──────────────────────────────────────────────
   function handleLogoChange(file: File) {
@@ -392,6 +457,8 @@ export function OnboardingModal({ studioId, studioName: initialStudioName }: Pro
           postcode: bizData.postcode || null,
           contact_phone: bizData.contact_phone || null,
           onboarding_complete: true,
+          ...(watiUrl.trim() && { wati_api_url: watiUrl.trim() }),
+          ...(watiKey.trim() && { wati_api_key: watiKey.trim() }),
         })
         .eq("id", studioId)
 
@@ -418,7 +485,7 @@ export function OnboardingModal({ studioId, studioName: initialStudioName }: Pro
     } finally {
       setSaving(false)
     }
-  }, [studioId, studioName, initialStudioName, logoFile, bizData, invites, router])
+  }, [studioId, studioName, initialStudioName, logoFile, bizData, invites, watiUrl, watiKey, router])
 
   // ── Step navigation ───────────────────────────────────────
   function handleNext() {
@@ -434,6 +501,9 @@ export function OnboardingModal({ studioId, studioName: initialStudioName }: Pro
       if (!bizData.state_code) { setError("Please select your state"); return }
       setError("")
       setStep(2)
+    } else if (step === 2) {
+      setError("")
+      setStep(3)
     }
   }
 
@@ -480,6 +550,14 @@ export function OnboardingModal({ studioId, studioName: initialStudioName }: Pro
             {step === 2 && (
               <Step3 invites={invites} onChange={setInvites} />
             )}
+            {step === 3 && (
+              <Step4
+                watiUrl={watiUrl}
+                watiKey={watiKey}
+                onWatiUrlChange={setWatiUrl}
+                onWatiKeyChange={setWatiKey}
+              />
+            )}
 
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
@@ -492,14 +570,14 @@ export function OnboardingModal({ studioId, studioName: initialStudioName }: Pro
               </Button>
             )}
 
-            {step < 2 && (
+            {step < 3 && (
               <Button onClick={handleNext} disabled={saving} className="flex-1">
                 Continue
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <>
                 <Button
                   variant="outline"

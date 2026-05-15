@@ -23,6 +23,11 @@ export type PermissionAction =
   | "manage_snags"
   | "manage_meetings"
   | "manage_contractors"
+  | "log_time"
+  | "view_all_time_entries"
+  | "manage_stage_payments"
+  | "manage_spec"
+  | "manage_clients"
 
 export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
   owner: [
@@ -48,6 +53,11 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "manage_snags",
     "manage_meetings",
     "manage_contractors",
+    "log_time",
+    "view_all_time_entries",
+    "manage_stage_payments",
+    "manage_spec",
+    "manage_clients",
   ],
   senior_designer: [
     "view_financials",
@@ -65,6 +75,11 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "manage_snags",
     "manage_meetings",
     "manage_contractors",
+    "log_time",
+    "view_all_time_entries",
+    "manage_stage_payments",
+    "manage_spec",
+    "manage_clients",
   ],
   designer: [
     "manage_procurement",
@@ -75,9 +90,12 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "manage_rfis",
     "manage_snags",
     "manage_meetings",
+    "log_time",
+    "manage_spec",
   ],
   intern: [
     "view_tasks",
+    "log_time",
   ],
 }
 
