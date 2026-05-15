@@ -291,42 +291,15 @@ export async function sendInvoice(invoiceId: string): Promise<void> {
   if (!invoice) throw new Error("Invoice not found")
   if (invoice.status !== "draft") throw new Error("Only draft invoices can be sent")
 
-  const { data: client } = await supabase
-    .from("clients")
-    .select("name, email, whatsapp_number")
-    .eq("id", invoice.client_id)
-    .single()
-
-  const { data: project } = await supabase
-    .from("projects")
-    .select("name")
-    .eq("id", invoice.project_id)
-    .single()
-
   await supabase
     .from("invoices")
     .update({ status: "sent", sent_at: new Date().toISOString() })
     .eq("id", invoiceId)
     .eq("studio_id", studioId)
 
-  // Stub: log to whatsapp_messages table
-  await supabase.from("whatsapp_messages").insert({
-    studio_id: studioId,
-    recipient_type: "client",
-    recipient_id: invoice.client_id,
-    template_id: "invoice_sent",
-    variables: {
-      name: client?.name ?? "",
-      invoice_number: invoice.invoice_number,
-      amount: invoice.total,
-      due_date: invoice.due_date ?? "",
-      project_name: project?.name ?? "",
-    },
-    status: "queued",
-    project_id: invoice.project_id,
-  })
-
-  console.log("EMAIL: invoice sent to", client?.email)
+  import("@/app/actions/notifications").then(({ notifyClientInvoiceSent }) => {
+    notifyClientInvoiceSent(invoiceId).catch(() => {})
+  }).catch(() => {})
 
   revalidatePath(`/dashboard/projects/${invoice.project_id}`)
 }

@@ -18,6 +18,43 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = await createClient()
+
+  // Portal token auth path — no session required
+  const portalToken = req.nextUrl.searchParams.get("portalToken")
+  if (portalToken) {
+    const { data: portalClient } = await supabase
+      .from("clients")
+      .select("id, portal_token_expires_at")
+      .eq("portal_token", portalToken)
+      .single()
+
+    if (!portalClient) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+    }
+
+    if (
+      portalClient.portal_token_expires_at &&
+      new Date(portalClient.portal_token_expires_at) < new Date()
+    ) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+    }
+
+    const { data: portalInvoice } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("id", invoiceId)
+      .eq("client_id", portalClient.id)
+      .single()
+
+    if (!portalInvoice) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+    }
+
+    // Fall through to PDF generation with portalInvoice and no studioId check
+    return generatePdf(supabase, portalInvoice)
+  }
+
+  // Session-based auth path
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
@@ -39,6 +76,13 @@ export async function GET(req: NextRequest) {
     .single()
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
 
+  return generatePdf(supabase, invoice)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function generatePdf(supabase: any, invoice: any): Promise<NextResponse> {
+  const studioId = invoice.studio_id
+
   // Fetch studio details
   const { data: studio } = await supabase
     .from("studios")
@@ -57,7 +101,7 @@ export async function GET(req: NextRequest) {
   const { data: payments } = await supabase
     .from("invoice_payments")
     .select("amount, payment_date, bank_reference")
-    .eq("invoice_id", invoiceId)
+    .eq("invoice_id", invoice.id)
     .eq("studio_id", studioId)
 
   const lineItems: Array<{
@@ -76,7 +120,7 @@ export async function GET(req: NextRequest) {
   const clientAddress = [client?.address_line1, client?.address_line2, client?.address_line3, client?.postcode]
     .filter(Boolean).join(", ")
 
-  const paymentsHtml = (payments ?? []).map(p =>
+  const paymentsHtml = (payments ?? []).map((p: { payment_date: string; bank_reference: string | null; amount: number }) =>
     `<tr>
       <td colspan="4" style="padding:4px 0; color:#666; font-size:12px;">
         ${formatDate(p.payment_date)} · ${p.bank_reference ?? ""}

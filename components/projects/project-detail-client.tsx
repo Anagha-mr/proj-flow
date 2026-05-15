@@ -12,11 +12,20 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar, AlertCircle } from "lucide-react"
+import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar } from "lucide-react"
 import { TasksTab } from "@/components/projects/tasks/tasks-tab"
 import { DocumentsTab } from "@/components/projects/documents/documents-tab"
 import { ProcurementTab } from "@/components/projects/procurement/procurement-tab"
 import { FinanceTab } from "@/components/projects/finance/finance-tab"
+import { SiteTab } from "@/components/projects/site/site-tab"
+import { MeetingsTab } from "@/components/projects/meetings/meetings-tab"
+import { RfiTab } from "@/components/projects/rfis/rfi-tab"
+import { SnagTab } from "@/components/projects/snags/snag-tab"
+import type { SiteUpdate } from "@/app/actions/site"
+import type { Meeting } from "@/app/actions/meetings"
+import type { RFI } from "@/app/actions/rfis"
+import type { SnagItem } from "@/app/actions/snags"
+import type { Contractor } from "@/app/actions/contractors"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
 import { updateProject } from "@/app/actions/projects"
 import { getProjectFinanceSummary } from "@/app/actions/finance"
@@ -92,6 +101,7 @@ export function ProjectDetailClient({
   upcomingTasks,
   userRole,
   currentUserId,
+  currentUserName,
   studioId,
   studioUsers,
   studioStateCode,
@@ -99,12 +109,19 @@ export function ProjectDetailClient({
   studioName,
   studioGstin,
   studioBankDetails,
+  initialSiteUpdates,
+  initialMeetings,
+  initialRfis,
+  initialSnags,
+  projectContractors,
+  projectDocuments,
 }: {
   project: Project
   taskCounts: TaskCounts
   upcomingTasks: UpcomingTask[]
   userRole: string
   currentUserId: string
+  currentUserName: string
   studioId: string
   studioUsers: StudioUser[]
   studioStateCode: string
@@ -112,6 +129,12 @@ export function ProjectDetailClient({
   studioName: string
   studioGstin: string | null
   studioBankDetails: Record<string, string> | null
+  initialSiteUpdates: SiteUpdate[]
+  initialMeetings: Meeting[]
+  initialRfis: RFI[]
+  initialSnags: SnagItem[]
+  projectContractors: Contractor[]
+  projectDocuments: Array<{ id: string; name: string }>
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -201,13 +224,23 @@ export function ProjectDetailClient({
       <div className="p-6 pt-4">
         <Tabs defaultValue="overview">
           <TabsList className="overflow-x-auto flex w-full justify-start h-auto bg-transparent border-b rounded-none p-0 gap-0 mb-6">
-            {["Overview", "Tasks", "Documents", "Procurement", "Finance", "Site", "Meetings"].map((tab) => (
+            {[
+              { label: "Overview",    value: "overview" },
+              { label: "Tasks",       value: "tasks" },
+              { label: "Documents",   value: "documents" },
+              { label: "Procurement", value: "procurement" },
+              { label: "Finance",     value: "finance" },
+              { label: "Site",        value: "site" },
+              { label: "Meetings",    value: "meetings" },
+              { label: "RFI",         value: "rfi" },
+              { label: "Snag List",   value: "snag-list" },
+            ].map((tab) => (
               <TabsTrigger
-                key={tab}
-                value={tab.toLowerCase()}
+                key={tab.value}
+                value={tab.value}
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#e94560] data-[state=active]:bg-transparent data-[state=active]:text-[#e94560] px-4 pb-2 shrink-0"
               >
-                {tab}
+                {tab.label}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -440,18 +473,46 @@ export function ProjectDetailClient({
             />
           </TabsContent>
 
-          {/* ── Placeholder tabs ── */}
-          {["site", "meetings"].map((tab) => (
-            <TabsContent key={tab} value={tab}>
-              <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
-                <AlertCircle className="w-10 h-10 text-muted-foreground/50" />
-                <div>
-                  <p className="font-semibold capitalize">{tab}</p>
-                  <p className="text-sm text-muted-foreground mt-1">Coming in a future sprint</p>
-                </div>
-              </div>
-            </TabsContent>
-          ))}
+          {/* ── Site Tab ── */}
+          <TabsContent value="site">
+            <SiteTab
+              project={{ id: localProject.id, studio_id: studioId }}
+              initialUpdates={initialSiteUpdates}
+              currentUser={{ id: currentUserId, role: userRole }}
+            />
+          </TabsContent>
+
+          {/* ── Meetings Tab ── */}
+          <TabsContent value="meetings">
+            <MeetingsTab
+              project={{ id: localProject.id, studio_id: studioId, name: localProject.name }}
+              initialMeetings={initialMeetings}
+              currentUser={{ id: currentUserId, name: currentUserName, role: userRole }}
+              studioUsers={studioUsers.map((u) => ({ id: u.id, name: u.name, role: u.role }))}
+            />
+          </TabsContent>
+
+          {/* ── RFI Tab ── */}
+          <TabsContent value="rfi">
+            <RfiTab
+              project={{ id: localProject.id, studio_id: studioId, name: localProject.name }}
+              initialRfis={initialRfis}
+              currentUser={{ id: currentUserId, name: currentUserName, role: userRole }}
+              projectDocuments={projectDocuments}
+              projectContractors={projectContractors}
+            />
+          </TabsContent>
+
+          {/* ── Snag List Tab ── */}
+          <TabsContent value="snag-list">
+            <SnagTab
+              project={{ id: localProject.id, studio_id: studioId, name: localProject.name }}
+              initialSnags={initialSnags}
+              currentUser={{ id: currentUserId, name: currentUserName, role: userRole }}
+              projectContractors={projectContractors}
+              studioUsers={studioUsers.map((u) => ({ id: u.id, name: u.name, role: u.role }))}
+            />
+          </TabsContent>
         </Tabs>
       </div>
 

@@ -3,6 +3,12 @@ import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { getProject, getProjectTaskCounts, getUpcomingTasks, getStudioUsers } from "@/app/actions/projects"
 import { ProjectDetailClient } from "@/components/projects/project-detail-client"
+import { getSiteUpdates } from "@/app/actions/site"
+import { getMeetings } from "@/app/actions/meetings"
+import { getRfis } from "@/app/actions/rfis"
+import { getSnagItems } from "@/app/actions/snags"
+import { getProjectContractors } from "@/app/actions/contractors"
+import { getDocuments } from "@/app/actions/documents"
 
 export const metadata: Metadata = { title: "Project" }
 
@@ -46,11 +52,19 @@ export default async function ProjectDetailPage({
     clientStateCode = clientRow?.state_code ?? ""
   }
 
-  const [taskCounts, upcomingTasks, studioUsers] = await Promise.all([
+  const [taskCounts, upcomingTasks, studioUsers, initialSiteUpdates, initialMeetings, initialRfis, initialSnags, projectContractors, projectDocuments] = await Promise.all([
     getProjectTaskCounts(id),
     getUpcomingTasks(id),
     getStudioUsers(),
+    getSiteUpdates(id).catch(() => []),
+    getMeetings(id).catch(() => []),
+    getRfis(id).catch(() => []),
+    getSnagItems(id).catch(() => []),
+    getProjectContractors(id).catch(() => []),
+    getDocuments(id).catch(() => []),
   ])
+
+  const currentUserName = studioUsers.find((u) => u.id === user!.id)?.name ?? ""
 
   return (
     <ProjectDetailClient
@@ -59,6 +73,7 @@ export default async function ProjectDetailPage({
       upcomingTasks={upcomingTasks}
       userRole={profile?.role ?? "designer"}
       currentUserId={user!.id}
+      currentUserName={currentUserName}
       studioId={profile?.studio_id ?? ""}
       studioUsers={studioUsers}
       studioStateCode={studio?.state_code ?? ""}
@@ -66,6 +81,12 @@ export default async function ProjectDetailPage({
       studioName={studio?.name ?? ""}
       studioGstin={studio?.gstin ?? null}
       studioBankDetails={(studio?.bank_details as Record<string, string> | null) ?? null}
+      initialSiteUpdates={initialSiteUpdates}
+      initialMeetings={initialMeetings}
+      initialRfis={initialRfis}
+      initialSnags={initialSnags}
+      projectContractors={projectContractors}
+      projectDocuments={projectDocuments.map((d) => ({ id: d.id, name: d.name }))}
     />
   )
 }

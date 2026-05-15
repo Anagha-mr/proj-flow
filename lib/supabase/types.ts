@@ -1138,6 +1138,306 @@ export interface Database {
           }
         ]
       }
+      site_updates: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          submitted_by_type: string
+          submitted_by_id: string
+          photos: string[]
+          space_tag: string | null
+          phase_tag: string | null
+          status_note: string | null
+          is_client_visible: boolean
+          offline_queued: boolean
+          submitted_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          submitted_by_type: string
+          submitted_by_id: string
+          photos?: string[]
+          space_tag?: string | null
+          phase_tag?: string | null
+          status_note?: string | null
+          is_client_visible?: boolean
+          offline_queued?: boolean
+          submitted_at?: string
+        }
+        Update: {
+          photos?: string[]
+          space_tag?: string | null
+          phase_tag?: string | null
+          status_note?: string | null
+          is_client_visible?: boolean
+          offline_queued?: boolean
+        }
+        Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          id: string
+          user_id: string
+          studio_id: string
+          event_type: string
+          in_app: boolean
+          email: boolean
+          whatsapp: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          studio_id: string
+          event_type: string
+          in_app?: boolean
+          email?: boolean
+          whatsapp?: boolean
+        }
+        Update: {
+          in_app?: boolean
+          email?: boolean
+          whatsapp?: boolean
+        }
+        Relationships: []
+      }
+      contractors: {
+        Row: {
+          id: string
+          studio_id: string
+          company_name: string
+          company_type: string | null
+          contact_name: string
+          phone: string
+          email: string | null
+          whatsapp_number: string | null
+          address: string | null
+          gstin: string | null
+          tax_bracket: string | null
+          site_supervisor_name: string | null
+          site_supervisor_phone: string | null
+          contractor_token: string
+          contractor_token_expires_at: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          company_name: string
+          company_type?: string | null
+          contact_name: string
+          phone: string
+          email?: string | null
+          whatsapp_number?: string | null
+          address?: string | null
+          gstin?: string | null
+          tax_bracket?: string | null
+          site_supervisor_name?: string | null
+          site_supervisor_phone?: string | null
+          contractor_token?: string
+          contractor_token_expires_at?: string | null
+          is_active?: boolean
+        }
+        Update: {
+          company_name?: string
+          company_type?: string | null
+          contact_name?: string
+          phone?: string
+          email?: string | null
+          whatsapp_number?: string | null
+          address?: string | null
+          gstin?: string | null
+          tax_bracket?: string | null
+          site_supervisor_name?: string | null
+          site_supervisor_phone?: string | null
+          contractor_token?: string
+          contractor_token_expires_at?: string | null
+          is_active?: boolean
+        }
+        Relationships: []
+      }
+      project_contractors: {
+        Row: {
+          id: string
+          project_id: string
+          contractor_id: string
+          studio_id: string
+          scope_notes: string | null
+          assigned_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          contractor_id: string
+          studio_id: string
+          scope_notes?: string | null
+          assigned_at?: string
+        }
+        Update: {
+          scope_notes?: string | null
+        }
+        Relationships: []
+      }
+      meetings: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          title: string
+          meeting_type: string
+          meeting_date: string
+          start_time: string | null
+          end_time: string | null
+          location: string | null
+          attendees: Json
+          agenda: string | null
+          minutes: string | null
+          action_items: Json
+          created_by_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          title: string
+          meeting_type: string
+          meeting_date: string
+          start_time?: string | null
+          end_time?: string | null
+          location?: string | null
+          attendees?: Json
+          agenda?: string | null
+          minutes?: string | null
+          action_items?: Json
+          created_by_id?: string | null
+        }
+        Update: {
+          title?: string
+          meeting_type?: string
+          meeting_date?: string
+          start_time?: string | null
+          end_time?: string | null
+          location?: string | null
+          attendees?: Json
+          agenda?: string | null
+          minutes?: string | null
+          action_items?: Json
+        }
+        Relationships: []
+      }
+      rfis: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          contractor_id: string | null
+          ref_number: string
+          raised_by_type: string
+          raised_by_id: string
+          title: string
+          description: string
+          linked_document_id: string | null
+          space_tag: string | null
+          status: string
+          response_deadline: string
+          response_text: string | null
+          responded_by_id: string | null
+          responded_at: string | null
+          escalated_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          contractor_id?: string | null
+          ref_number: string
+          raised_by_type: string
+          raised_by_id: string
+          title: string
+          description: string
+          linked_document_id?: string | null
+          space_tag?: string | null
+          status?: string
+          response_deadline: string
+          response_text?: string | null
+          responded_by_id?: string | null
+          responded_at?: string | null
+          escalated_at?: string | null
+        }
+        Update: {
+          status?: string
+          response_text?: string | null
+          responded_by_id?: string | null
+          responded_at?: string | null
+          escalated_at?: string | null
+        }
+        Relationships: []
+      }
+      snag_items: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          photo_url: string
+          location_description: string
+          plan_reference: string | null
+          description: string
+          assigned_to_type: string
+          assigned_to_id: string
+          due_date: string | null
+          status: string
+          resolution_photo_url: string | null
+          resolution_note: string | null
+          client_signed_off_at: string | null
+          client_signed_off_by: string | null
+          created_by_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          photo_url: string
+          location_description: string
+          plan_reference?: string | null
+          description: string
+          assigned_to_type: string
+          assigned_to_id: string
+          due_date?: string | null
+          status?: string
+          resolution_photo_url?: string | null
+          resolution_note?: string | null
+          created_by_id?: string | null
+        }
+        Update: {
+          photo_url?: string
+          location_description?: string
+          plan_reference?: string | null
+          description?: string
+          assigned_to_type?: string
+          assigned_to_id?: string
+          due_date?: string | null
+          status?: string
+          resolution_photo_url?: string | null
+          resolution_note?: string | null
+          client_signed_off_at?: string | null
+          client_signed_off_by?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

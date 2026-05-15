@@ -17,6 +17,12 @@ export type PermissionAction =
   | "archive_documents"
   | "delete_documents"
   | "manage_document_access"
+  | "manage_site"
+  | "manage_billing"
+  | "manage_rfis"
+  | "manage_snags"
+  | "manage_meetings"
+  | "manage_contractors"
 
 export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
   owner: [
@@ -36,6 +42,12 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "archive_documents",
     "delete_documents",
     "manage_document_access",
+    "manage_site",
+    "manage_billing",
+    "manage_rfis",
+    "manage_snags",
+    "manage_meetings",
+    "manage_contractors",
   ],
   senior_designer: [
     "view_financials",
@@ -48,6 +60,11 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "upload_documents",
     "archive_documents",
     "manage_document_access",
+    "manage_site",
+    "manage_rfis",
+    "manage_snags",
+    "manage_meetings",
+    "manage_contractors",
   ],
   designer: [
     "manage_procurement",
@@ -55,6 +72,9 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "manage_tasks",
     "view_tasks",
     "upload_documents",
+    "manage_rfis",
+    "manage_snags",
+    "manage_meetings",
   ],
   intern: [
     "view_tasks",

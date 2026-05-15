@@ -101,14 +101,10 @@ export async function createProject(data: {
 
   if (projectError) throw new Error(projectError.message)
 
-  // WhatsApp stub log when client is linked
   if (resolvedClientId) {
-    console.log(
-      "[WhatsApp stub] project_welcome_client → client_id:",
-      resolvedClientId,
-      "project:",
-      data.name
-    )
+    import("@/app/actions/notifications").then(({ notifyClientProjectWelcome }) => {
+      notifyClientProjectWelcome(resolvedClientId!, project.id).catch(() => {})
+    }).catch(() => {})
   }
 
   // Insert project members (creator always included as project_lead)

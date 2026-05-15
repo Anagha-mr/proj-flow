@@ -258,6 +258,20 @@ export async function toggleScheduleShare(
     .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
+
+  if (enabled) {
+    const { data: proj } = await supabase
+      .from("projects")
+      .select("client_id")
+      .eq("id", schedule.project_id)
+      .single()
+    if (proj?.client_id) {
+      import("@/app/actions/notifications").then(({ notifyClientProcurementReady }) => {
+        notifyClientProcurementReady(proj.client_id!, scheduleId).catch(() => {})
+      }).catch(() => {})
+    }
+  }
+
   revalidatePath(`/dashboard/projects/${schedule.project_id}`)
   return { shareToken: schedule.share_token }
 }
