@@ -32,7 +32,7 @@ export async function createStudioAction(formData: FormData) {
 
     await supabase
       .from("users")
-      .update({ studio_id: studio.id, role: "owner" })
+      .update({ studio_id: studio.id, role: "owner", is_active: true })
       .eq("id", user.id)
   }
 

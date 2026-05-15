@@ -84,8 +84,8 @@ begin
   values (p_studio_name)
   returning id into v_studio_id;
 
-  insert into public.users (id, studio_id, name, email, role)
-  values (p_user_id, v_studio_id, p_user_name, p_user_email, 'owner');
+  insert into public.users (id, studio_id, name, email, role, is_active)
+  values (p_user_id, v_studio_id, p_user_name, p_user_email, 'owner', true);
 end;
 $$ language plpgsql security definer;
 
@@ -106,8 +106,8 @@ begin
     perform public.handle_new_user_signup(new.id, v_name, new.email, v_studio_name);
   else
     -- OAuth or team invite: create user profile only (no studio yet)
-    insert into public.users (id, name, email)
-    values (new.id, v_name, new.email);
+    insert into public.users (id, name, email, is_active)
+    values (new.id, v_name, new.email, true);
   end if;
 
   return new;
