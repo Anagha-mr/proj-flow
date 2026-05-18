@@ -636,6 +636,215 @@ export async function notifyMeetingNotesShared(meetingId: string, recipientPhone
   console.log('WHATSAPP STUB: meeting notes shared', meetingId, recipientPhones)
 }
 
+export async function notifyOrderDelayed(
+  studioId: string,
+  projectId: string,
+  itemName: string,
+  expectedDate: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    const { data: owner } = await supabase
+      .from("users")
+      .select("name, whatsapp_number")
+      .eq("studio_id", studioId)
+      .eq("role", "owner")
+      .limit(1)
+      .single()
+    if (!owner?.whatsapp_number) return
+
+    const studioUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/projects/${projectId}`
+    await sendWhatsAppMessage({
+      to: owner.whatsapp_number,
+      templateName: "order_delayed",
+      variables: { "1": owner.name, "2": itemName, "3": expectedDate, "4": studioUrl },
+      studioId,
+      recipientType: "user",
+      recipientId: owner.whatsapp_number,
+      projectId,
+    })
+  } catch (err) {
+    console.error("notifyOrderDelayed error:", err)
+  }
+}
+
+export async function notifyVendorPOSent(
+  studioId: string,
+  vendorId: string,
+  poNumber: string,
+  projectName: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: vendor } = await (supabase.from as any)("vendors")
+      .select("name, whatsapp_number")
+      .eq("id", vendorId)
+      .single()
+    if (!vendor?.whatsapp_number) return
+
+    const poUrl = `${process.env.NEXT_PUBLIC_APP_URL}/share/po/${vendorId}`
+    await sendWhatsAppMessage({
+      to: vendor.whatsapp_number,
+      templateName: "po_sent_to_vendor",
+      variables: { "1": vendor.name, "2": poNumber, "3": projectName, "4": poUrl },
+      studioId,
+      recipientType: "vendor",
+      recipientId: vendorId,
+    })
+  } catch (err) {
+    console.error("notifyVendorPOSent error:", err)
+  }
+}
+
+export async function notifyVendorQuoteRequest(
+  studioId: string,
+  vendorId: string,
+  itemName: string,
+  deadline: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: vendor } = await (supabase.from as any)("vendors")
+      .select("name, whatsapp_number")
+      .eq("id", vendorId)
+      .single()
+    if (!vendor?.whatsapp_number) return
+
+    await sendWhatsAppMessage({
+      to: vendor.whatsapp_number,
+      templateName: "quote_request_sent",
+      variables: { "1": vendor.name, "2": itemName, "3": deadline },
+      studioId,
+      recipientType: "vendor",
+      recipientId: vendorId,
+    })
+  } catch (err) {
+    console.error("notifyVendorQuoteRequest error:", err)
+  }
+}
+
+export async function notifyVendorQuoteNotSelected(
+  studioId: string,
+  vendorId: string,
+  itemName: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: vendor } = await (supabase.from as any)("vendors")
+      .select("name, whatsapp_number")
+      .eq("id", vendorId)
+      .single()
+    if (!vendor?.whatsapp_number) return
+
+    await sendWhatsAppMessage({
+      to: vendor.whatsapp_number,
+      templateName: "quote_not_selected",
+      variables: { "1": vendor.name, "2": itemName },
+      studioId,
+      recipientType: "vendor",
+      recipientId: vendorId,
+    })
+  } catch (err) {
+    console.error("notifyVendorQuoteNotSelected error:", err)
+  }
+}
+
+export async function notifyQuoteResponseReceived(
+  studioId: string,
+  projectId: string,
+  itemName: string,
+  vendorName: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    const { data: owner } = await supabase
+      .from("users")
+      .select("name, whatsapp_number")
+      .eq("studio_id", studioId)
+      .eq("role", "owner")
+      .limit(1)
+      .single()
+    if (!owner?.whatsapp_number) return
+
+    const studioUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/projects/${projectId}`
+    await sendWhatsAppMessage({
+      to: owner.whatsapp_number,
+      templateName: "quote_response_received",
+      variables: { "1": owner.name, "2": itemName, "3": vendorName, "4": studioUrl },
+      studioId,
+      recipientType: "user",
+      recipientId: owner.whatsapp_number,
+      projectId,
+    })
+  } catch (err) {
+    console.error("notifyQuoteResponseReceived error:", err)
+  }
+}
+
+export async function notifyPOApprovalRequired(
+  studioId: string,
+  poNumber: string,
+  grandTotal: number
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    const { data: owner } = await supabase
+      .from("users")
+      .select("name, whatsapp_number")
+      .eq("studio_id", studioId)
+      .eq("role", "owner")
+      .limit(1)
+      .single()
+    if (!owner?.whatsapp_number) return
+
+    const formatted = grandTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
+    const studioUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/vendors`
+    await sendWhatsAppMessage({
+      to: owner.whatsapp_number,
+      templateName: "po_approval_required",
+      variables: { "1": owner.name, "2": poNumber, "3": formatted, "4": studioUrl },
+      studioId,
+      recipientType: "user",
+      recipientId: owner.whatsapp_number,
+    })
+  } catch (err) {
+    console.error("notifyPOApprovalRequired error:", err)
+  }
+}
+
+export async function notifyPOConfirmedByVendor(
+  studioId: string,
+  poNumber: string,
+  vendorName: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    const { data: owner } = await supabase
+      .from("users")
+      .select("name, whatsapp_number")
+      .eq("studio_id", studioId)
+      .eq("role", "owner")
+      .limit(1)
+      .single()
+    if (!owner?.whatsapp_number) return
+
+    const studioUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/vendors`
+    await sendWhatsAppMessage({
+      to: owner.whatsapp_number,
+      templateName: "po_confirmed_by_vendor",
+      variables: { "1": owner.name, "2": poNumber, "3": vendorName, "4": studioUrl },
+      studioId,
+      recipientType: "user",
+      recipientId: owner.whatsapp_number,
+    })
+  } catch (err) {
+    console.error("notifyPOConfirmedByVendor error:", err)
+  }
+}
+
 export async function notifyStagePaymentReleased(paymentId: string): Promise<void> {
   try {
     const supabase = createServiceClient()

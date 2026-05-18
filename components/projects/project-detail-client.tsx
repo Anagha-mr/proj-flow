@@ -24,6 +24,7 @@ import { SnagTab } from "@/components/projects/snags/snag-tab"
 import { TimeTab } from "@/components/projects/time/time-tab"
 import { SpecTab } from "@/components/projects/spec/spec-tab"
 import { StagePaymentsSection } from "@/components/projects/contractors/stage-payments-section"
+import { OrdersTab } from "@/components/projects/orders/orders-tab"
 import type { SiteUpdate } from "@/app/actions/site"
 import type { Meeting } from "@/app/actions/meetings"
 import type { RFI } from "@/app/actions/rfis"
@@ -32,6 +33,9 @@ import type { Contractor } from "@/app/actions/contractors"
 import type { TimeEntry } from "@/app/actions/time-tracking"
 import type { StagePayment } from "@/app/actions/stage-payments"
 import type { SpecItem } from "@/app/actions/spec"
+import type { OrderTrackingRow, OrderSummary } from "@/app/actions/orders"
+import type { Vendor } from "@/app/actions/vendors"
+import type { QuoteRequest } from "@/app/actions/quotes"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
 import { updateProject } from "@/app/actions/projects"
 import { getProjectFinanceSummary } from "@/app/actions/finance"
@@ -125,6 +129,10 @@ export function ProjectDetailClient({
   initialStagePayments,
   initialSpecItems,
   currentUserHourlyRate,
+  initialOrderTracking,
+  initialOrderSummary,
+  vendors,
+  initialQuoteRequests,
 }: {
   project: Project
   taskCounts: TaskCounts
@@ -149,6 +157,10 @@ export function ProjectDetailClient({
   initialStagePayments: StagePayment[]
   initialSpecItems: SpecItem[]
   currentUserHourlyRate: number | null
+  initialOrderTracking: OrderTrackingRow[]
+  initialOrderSummary: OrderSummary
+  vendors: Vendor[]
+  initialQuoteRequests: QuoteRequest[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -251,6 +263,7 @@ export function ProjectDetailClient({
               { label: "Contractors",  value: "contractors" },
               { label: "Time",         value: "time" },
               { label: "Spec",         value: "spec" },
+              { label: "Orders",       value: "orders" },
             ].map((tab) => (
               <TabsTrigger
                 key={tab.value}
@@ -471,6 +484,8 @@ export function ProjectDetailClient({
               studioId={studioId}
               userRole={userRole}
               currentUserId={currentUserId}
+              initialQuoteRequests={initialQuoteRequests}
+              vendors={vendors}
             />
           </TabsContent>
 
@@ -582,6 +597,16 @@ export function ProjectDetailClient({
               project={{ id: localProject.id, studio_id: studioId, name: localProject.name }}
               initialItems={initialSpecItems}
               currentUser={{ id: currentUserId, role: userRole }}
+            />
+          </TabsContent>
+
+          {/* ── Orders Tab ── */}
+          <TabsContent value="orders">
+            <OrdersTab
+              orderTracking={initialOrderTracking}
+              orderSummary={initialOrderSummary}
+              vendors={vendors}
+              projectId={localProject.id}
             />
           </TabsContent>
         </Tabs>

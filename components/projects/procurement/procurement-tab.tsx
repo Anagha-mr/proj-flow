@@ -5,15 +5,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { SchedulesTab } from "./schedules-tab"
 import { ApprovalsTab } from "./approvals-tab"
 import { FinancialTab } from "./financial-tab"
+import { QuotesTab } from "./quotes-tab"
+import type { QuoteRequest } from "@/app/actions/quotes"
+import type { Vendor } from "@/app/actions/vendors"
 
 interface ProcurementTabProps {
   projectId: string
   studioId: string
   userRole: string
   currentUserId: string
+  initialQuoteRequests?: QuoteRequest[]
+  vendors?: Vendor[]
 }
 
-export function ProcurementTab({ projectId, studioId, userRole, currentUserId }: ProcurementTabProps) {
+export function ProcurementTab({ projectId, studioId, userRole, currentUserId, initialQuoteRequests, vendors }: ProcurementTabProps) {
   const [activeSubTab, setActiveSubTab] = useState("schedules")
 
   return (
@@ -24,6 +29,7 @@ export function ProcurementTab({ projectId, studioId, userRole, currentUserId }:
             { value: "schedules", label: "Schedules" },
             { value: "approvals", label: "Approvals" },
             { value: "financial", label: "Financial" },
+            { value: "quotes", label: "Quotes" },
           ].map((tab) => (
             <TabsTrigger
               key={tab.value}
@@ -55,6 +61,14 @@ export function ProcurementTab({ projectId, studioId, userRole, currentUserId }:
           <FinancialTab
             projectId={projectId}
             userRole={userRole}
+          />
+        </TabsContent>
+
+        <TabsContent value="quotes">
+          <QuotesTab
+            projectId={projectId}
+            initialRequests={initialQuoteRequests ?? []}
+            vendors={vendors ?? []}
           />
         </TabsContent>
       </Tabs>

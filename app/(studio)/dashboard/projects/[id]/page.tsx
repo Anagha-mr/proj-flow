@@ -12,6 +12,9 @@ import { getDocuments } from "@/app/actions/documents"
 import { getTimeEntries } from "@/app/actions/time-tracking"
 import { getStagePayments } from "@/app/actions/stage-payments"
 import { getSpecItems } from "@/app/actions/spec"
+import { getOrderTracking, getProjectOrderSummary } from "@/app/actions/orders"
+import { getVendors } from "@/app/actions/vendors"
+import { getQuoteRequests } from "@/app/actions/quotes"
 
 export const metadata: Metadata = { title: "Project" }
 
@@ -66,6 +69,10 @@ export default async function ProjectDetailPage({
     initialTimeEntries,
     initialStagePayments,
     initialSpecItems,
+    initialOrderTracking,
+    initialOrderSummary,
+    vendors,
+    initialQuoteRequests,
   ] = await Promise.all([
     getProjectTaskCounts(id),
     getUpcomingTasks(id),
@@ -79,6 +86,10 @@ export default async function ProjectDetailPage({
     getTimeEntries(id).catch(() => []),
     getStagePayments(id).catch(() => []),
     getSpecItems(id).catch(() => []),
+    getOrderTracking(id).catch(() => []),
+    getProjectOrderSummary(id).catch(() => ({ total_orders: 0, delivered: 0, in_transit: 0, delayed: 0, total_value_ordered: 0, total_value_delivered: 0 })),
+    getVendors().catch(() => []),
+    getQuoteRequests(id).catch(() => []),
   ])
 
   const currentUserName = studioUsers.find((u) => u.id === user!.id)?.name ?? ""
@@ -108,6 +119,10 @@ export default async function ProjectDetailPage({
       initialStagePayments={initialStagePayments}
       initialSpecItems={initialSpecItems}
       currentUserHourlyRate={(profile?.hourly_rate as number | null) ?? null}
+      initialOrderTracking={initialOrderTracking}
+      initialOrderSummary={initialOrderSummary}
+      vendors={vendors}
+      initialQuoteRequests={initialQuoteRequests}
     />
   )
 }

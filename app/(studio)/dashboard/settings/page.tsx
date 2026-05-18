@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NotificationPreferences } from "@/components/settings/notification-preferences"
 import { BillingTab } from "@/components/settings/billing-tab"
 import { IntegrationsTab } from "@/components/settings/integrations-tab"
+import { POThresholdSettings } from "@/components/settings/po-threshold-settings"
 
 export const metadata: Metadata = { title: "Settings" }
 
@@ -18,9 +19,9 @@ export default async function SettingsPage() {
 
   const studioId = profile?.studio_id ?? ""
 
-  const { data: studio } = await supabase
-    .from("studios")
-    .select("plan_tier, whatsapp_number, wati_api_url, wati_api_key, resend_api_key, sending_email, sending_email_name")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: studio } = await (supabase.from as any)("studios")
+    .select("plan_tier, whatsapp_number, wati_api_url, wati_api_key, resend_api_key, sending_email, sending_email_name, po_approval_threshold")
     .eq("id", studioId)
     .single()
 
@@ -64,6 +65,20 @@ export default async function SettingsPage() {
             initialResendKey={studio?.resend_api_key ?? null}
             initialSendingEmail={studio?.sending_email ?? null}
             initialSendingEmailName={studio?.sending_email_name ?? null}
+          />
+        </section>
+      )}
+
+      {isOwner && (
+        <section className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[#1a1a2e]">Finance &amp; Procurement</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Configure purchase order approval thresholds.
+            </p>
+          </div>
+          <POThresholdSettings
+            initialThreshold={typeof studio?.po_approval_threshold === 'number' ? studio.po_approval_threshold : 0}
           />
         </section>
       )}

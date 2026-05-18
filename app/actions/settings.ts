@@ -59,6 +59,25 @@ export async function testWatiConnection(studioId: string): Promise<{ ok: boolea
   }
 }
 
+export async function updateStudioSettings(updates: {
+  po_approval_threshold?: number
+}): Promise<void> {
+  const { supabase, studioId, role } = await getAuthContext()
+  if (role !== "owner") throw new Error("Only owners can update studio settings")
+
+  const payload: Record<string, unknown> = {}
+  if (updates.po_approval_threshold !== undefined) {
+    payload.po_approval_threshold = updates.po_approval_threshold
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from as any)("studios")
+    .update(payload)
+    .eq("id", studioId)
+
+  if (error) throw new Error(error.message)
+}
+
 export async function testResendEmail(studioId: string): Promise<{ ok: boolean; message: string }> {
   const { supabase, role } = await getAuthContext()
   if (role !== "owner") throw new Error("Only owners can test integrations")
