@@ -29,8 +29,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/contractors", icon: HardHat,         label: "Contractors", soon: false },
   { href: "/dashboard/vendors",     icon: Store,           label: "Vendors",     soon: false },
   { href: "/dashboard/finance",     icon: Wallet,          label: "Finance",     soon: false },
-  { href: "/dashboard/studio",      icon: Building2,       label: "Studio",      soon: false },
   { href: "/dashboard/portfolio",   icon: LayoutGrid,      label: "Portfolio",   soon: false },
+  { href: "/dashboard/studio",      icon: Building2,       label: "Studio",      soon: false },
   { href: "/dashboard/marketing",   icon: Megaphone,       label: "Marketing",   soon: true  },
 ] as const
 

@@ -593,3 +593,34 @@ export async function regeneratePortalToken(clientId: string): Promise<string> {
   revalidatePath("/dashboard/clients")
   return newToken
 }
+
+// ─── updateProjectContractValue ───────────────────────────────────────────────
+
+export async function updateProjectContractValue(
+  projectId: string,
+  contractValue: number | null
+): Promise<void> {
+  const { supabase, studioId, role } = await getAuthContext()
+
+  if (role !== 'owner' && role !== 'senior_designer') {
+    throw new Error('Only owners and senior designers can set the contract value')
+  }
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('studio_id', studioId)
+    .single()
+
+  if (!project) throw new Error('Project not found')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase.from('projects') as any)
+    .update({ contract_value: contractValue })
+    .eq('id', projectId)
+    .eq('studio_id', studioId)
+
+  revalidatePath(`/dashboard/projects/${projectId}`)
+  revalidatePath('/dashboard/finance')
+}

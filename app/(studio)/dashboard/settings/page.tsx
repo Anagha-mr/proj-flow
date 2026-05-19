@@ -71,11 +71,19 @@ export default async function SettingsPage() {
 
       {isOwner && (
         <section className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[#1a1a2e]">Finance &amp; Procurement</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Configure purchase order approval thresholds.
-            </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[#1a1a2e]">Finance &amp; Procurement</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Configure purchase order approval thresholds.
+              </p>
+            </div>
+            <a
+              href="/dashboard/finance"
+              className="text-sm text-[#e94560] hover:underline shrink-0 mt-1"
+            >
+              View Studio P&amp;L →
+            </a>
           </div>
           <POThresholdSettings
             initialThreshold={typeof studio?.po_approval_threshold === 'number' ? studio.po_approval_threshold : 0}

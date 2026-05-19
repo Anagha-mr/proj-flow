@@ -559,15 +559,15 @@ export async function getProjectFinanceSummary(projectId: string): Promise<Proje
   // Procurement cost from Sprint 5
   const procurementSummary = await getScheduleSummary(projectId)
 
-  // Project contract value
-  const { data: project } = await supabase
-    .from("projects")
-    .select("gst_bracket")
+  // Project contract value (real column added in Sprint 11)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: project } = await (supabase.from("projects") as any)
+    .select("contract_value")
     .eq("id", projectId)
     .eq("studio_id", studioId)
     .single()
 
-  const contract_value = project?.gst_bracket ? parseFloat(project.gst_bracket) || null : null
+  const contract_value = project?.contract_value ?? null
 
   // Invoices aggregation
   const { data: invoices } = await supabase

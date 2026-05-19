@@ -332,6 +332,12 @@ export interface Database {
           template_id: string | null
           pinterest_url: string | null
           is_pinned: boolean
+          contract_value: number | null
+          portfolio_summary: string | null
+          portfolio_key_decisions: string | null
+          portfolio_location_city: string | null
+          portfolio_year_completed: number | null
+          portfolio_published: boolean
           created_by: string | null
           created_at: string
           updated_at: string
@@ -359,6 +365,12 @@ export interface Database {
           template_id?: string | null
           pinterest_url?: string | null
           is_pinned?: boolean
+          contract_value?: number | null
+          portfolio_summary?: string | null
+          portfolio_key_decisions?: string | null
+          portfolio_location_city?: string | null
+          portfolio_year_completed?: number | null
+          portfolio_published?: boolean
           created_by?: string | null
         }
         Update: {
@@ -379,6 +391,12 @@ export interface Database {
           template_id?: string | null
           pinterest_url?: string | null
           is_pinned?: boolean
+          contract_value?: number | null
+          portfolio_summary?: string | null
+          portfolio_key_decisions?: string | null
+          portfolio_location_city?: string | null
+          portfolio_year_completed?: number | null
+          portfolio_published?: boolean
         }
         Relationships: [
           {
@@ -1397,6 +1415,40 @@ export interface Database {
           responded_by_id?: string | null
           responded_at?: string | null
           escalated_at?: string | null
+        }
+        Relationships: []
+      }
+      portfolio_gallery_items: {
+        Row: {
+          id: string
+          studio_id: string
+          project_id: string
+          image_url: string
+          caption: string | null
+          space_tag: string | null
+          display_order: number
+          include_in_export: boolean
+          uploaded_by_id: string | null
+          uploaded_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          project_id: string
+          image_url: string
+          caption?: string | null
+          space_tag?: string | null
+          display_order?: number
+          include_in_export?: boolean
+          uploaded_by_id?: string | null
+          uploaded_at?: string
+        }
+        Update: {
+          image_url?: string
+          caption?: string | null
+          space_tag?: string | null
+          display_order?: number
+          include_in_export?: boolean
         }
         Relationships: []
       }

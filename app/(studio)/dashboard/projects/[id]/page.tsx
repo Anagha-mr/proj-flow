@@ -15,6 +15,7 @@ import { getSpecItems } from "@/app/actions/spec"
 import { getOrderTracking, getProjectOrderSummary } from "@/app/actions/orders"
 import { getVendors } from "@/app/actions/vendors"
 import { getQuoteRequests } from "@/app/actions/quotes"
+import { getGalleryItems } from "@/app/actions/portfolio"
 
 export const metadata: Metadata = { title: "Project" }
 
@@ -73,6 +74,7 @@ export default async function ProjectDetailPage({
     initialOrderSummary,
     vendors,
     initialQuoteRequests,
+    initialGalleryItems,
   ] = await Promise.all([
     getProjectTaskCounts(id),
     getUpcomingTasks(id),
@@ -90,6 +92,7 @@ export default async function ProjectDetailPage({
     getProjectOrderSummary(id).catch(() => ({ total_orders: 0, delivered: 0, in_transit: 0, delayed: 0, total_value_ordered: 0, total_value_delivered: 0 })),
     getVendors().catch(() => []),
     getQuoteRequests(id).catch(() => []),
+    getGalleryItems(id).catch(() => []),
   ])
 
   const currentUserName = studioUsers.find((u) => u.id === user!.id)?.name ?? ""
@@ -123,6 +126,7 @@ export default async function ProjectDetailPage({
       initialOrderSummary={initialOrderSummary}
       vendors={vendors}
       initialQuoteRequests={initialQuoteRequests}
+      initialGalleryItems={initialGalleryItems}
     />
   )
 }

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { TasksTab } from "@/components/projects/tasks/tasks-tab"
 import { DocumentsTab } from "@/components/projects/documents/documents-tab"
 import { ProcurementTab } from "@/components/projects/procurement/procurement-tab"
@@ -25,6 +26,7 @@ import { TimeTab } from "@/components/projects/time/time-tab"
 import { SpecTab } from "@/components/projects/spec/spec-tab"
 import { StagePaymentsSection } from "@/components/projects/contractors/stage-payments-section"
 import { OrdersTab } from "@/components/projects/orders/orders-tab"
+import { PortfolioTab } from "@/components/projects/portfolio/portfolio-tab"
 import type { SiteUpdate } from "@/app/actions/site"
 import type { Meeting } from "@/app/actions/meetings"
 import type { RFI } from "@/app/actions/rfis"
@@ -36,8 +38,9 @@ import type { SpecItem } from "@/app/actions/spec"
 import type { OrderTrackingRow, OrderSummary } from "@/app/actions/orders"
 import type { Vendor } from "@/app/actions/vendors"
 import type { QuoteRequest } from "@/app/actions/quotes"
+import type { PortfolioGalleryItem } from "@/app/actions/portfolio"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
-import { updateProject } from "@/app/actions/projects"
+import { updateProject, updateProjectContractValue } from "@/app/actions/projects"
 import { getProjectFinanceSummary } from "@/app/actions/finance"
 import { useToast } from "@/hooks/use-toast"
 
@@ -60,6 +63,7 @@ type Project = {
   address_line3: string | null
   postcode: string | null
   updated_at: string
+  contract_value?: number | null
   client: { id: string; name: string; email: string | null; phone_primary: string | null; whatsapp_number: string | null } | null
   members: Array<{
     id: string
@@ -133,6 +137,7 @@ export function ProjectDetailClient({
   initialOrderSummary,
   vendors,
   initialQuoteRequests,
+  initialGalleryItems,
 }: {
   project: Project
   taskCounts: TaskCounts
@@ -161,6 +166,7 @@ export function ProjectDetailClient({
   initialOrderSummary: OrderSummary
   vendors: Vendor[]
   initialQuoteRequests: QuoteRequest[]
+  initialGalleryItems: PortfolioGalleryItem[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -170,6 +176,10 @@ export function ProjectDetailClient({
   const [financeSummary, setFinanceSummary] = useState<{
     total_invoiced: number; total_cost: number; contract_value: number | null
   } | null>(null)
+  const [contractValue, setContractValue] = useState<number | null>(project.contract_value ?? null as number | null)
+  const [cvInput, setCvInput] = useState("")
+  const [cvPopoverOpen, setCvPopoverOpen] = useState(false)
+  const [savingCV, setSavingCV] = useState(false)
 
   const typeMeta = TYPE_BADGE[localProject.type] ?? TYPE_BADGE.other
   const statusMeta = STATUS_BADGE[localProject.status] ?? STATUS_BADGE.active
@@ -183,6 +193,26 @@ export function ProjectDetailClient({
       .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id])
+
+  async function handleSaveContractValue() {
+    const val = parseFloat(cvInput)
+    if (isNaN(val) || val < 0) {
+      toast({ title: "Enter a valid contract value", variant: "destructive" })
+      return
+    }
+    setSavingCV(true)
+    try {
+      await updateProjectContractValue(localProject.id, val)
+      setContractValue(val)
+      setCvPopoverOpen(false)
+      setCvInput("")
+      toast({ title: "Contract value saved." })
+    } catch {
+      toast({ title: "Failed to save contract value", variant: "destructive" })
+    } finally {
+      setSavingCV(false)
+    }
+  }
   const { start, end } = getProjectDates(localProject.phases)
   const daysRemaining = end ? differenceInDays(new Date(end), new Date()) : null
 
@@ -264,6 +294,7 @@ export function ProjectDetailClient({
               { label: "Time",         value: "time" },
               { label: "Spec",         value: "spec" },
               { label: "Orders",       value: "orders" },
+              { label: "Portfolio",    value: "portfolio" },
             ].map((tab) => (
               <TabsTrigger
                 key={tab.value}
@@ -315,9 +346,38 @@ export function ProjectDetailClient({
                             : "₹ —"}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {financeSummary?.contract_value
-                            ? `of ${financeSummary.contract_value.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })} contract`
-                            : "Total invoiced"}
+                          {contractValue != null
+                            ? `of ${contractValue.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })} contract`
+                            : (
+                              <Popover open={cvPopoverOpen} onOpenChange={setCvPopoverOpen}>
+                                <PopoverTrigger asChild>
+                                  <button className="text-xs text-[#e94560] hover:underline">
+                                    Set contract value
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-56 p-3" align="start">
+                                  <div className="flex flex-col gap-2">
+                                    <span className="text-xs font-medium">Contract Value ₹</span>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      value={cvInput}
+                                      onChange={(e) => setCvInput(e.target.value)}
+                                      placeholder="e.g. 500000"
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button size="sm" className="flex-1" onClick={handleSaveContractValue} disabled={savingCV}>
+                                        Save
+                                      </Button>
+                                      <Button size="sm" variant="outline" onClick={() => setCvPopoverOpen(false)}>
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
                         </p>
                       </>
                     ) : (
@@ -607,6 +667,33 @@ export function ProjectDetailClient({
               orderSummary={initialOrderSummary}
               vendors={vendors}
               projectId={localProject.id}
+            />
+          </TabsContent>
+
+          {/* ── Portfolio Tab ── */}
+          <TabsContent value="portfolio">
+            <PortfolioTab
+              project={{
+                id: localProject.id,
+                name: localProject.name,
+                type: localProject.type,
+                status: localProject.status,
+                cover_image_url: localProject.cover_image_url,
+                portfolio_summary: (localProject as Record<string, unknown>).portfolio_summary as string | null ?? null,
+                portfolio_key_decisions: (localProject as Record<string, unknown>).portfolio_key_decisions as string | null ?? null,
+                portfolio_location_city: (localProject as Record<string, unknown>).portfolio_location_city as string | null ?? null,
+                portfolio_year_completed: (localProject as Record<string, unknown>).portfolio_year_completed as number | null ?? null,
+                portfolio_published: (localProject as Record<string, unknown>).portfolio_published as boolean ?? false,
+                client: localProject.client,
+                members: localProject.members.map((m) => ({
+                  user_id: m.user_id,
+                  project_role: m.project_role,
+                  user: m.user ? { id: m.user.id, name: m.user.name } : null,
+                })),
+              }}
+              galleryItems={initialGalleryItems}
+              studioId={studioId}
+              userRole={userRole}
             />
           </TabsContent>
         </Tabs>
