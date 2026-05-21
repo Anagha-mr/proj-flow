@@ -4,6 +4,7 @@ import { NotificationPreferences } from "@/components/settings/notification-pref
 import { BillingTab } from "@/components/settings/billing-tab"
 import { IntegrationsTab } from "@/components/settings/integrations-tab"
 import { POThresholdSettings } from "@/components/settings/po-threshold-settings"
+import { getCanvaConnectionStatus } from "@/app/actions/canva"
 
 export const metadata: Metadata = { title: "Settings" }
 
@@ -26,6 +27,8 @@ export default async function SettingsPage() {
     .single()
 
   const isOwner = profile?.role === "owner"
+
+  const canvaStatus = isOwner ? await getCanvaConnectionStatus().catch(() => null) : null
 
   return (
     <div className="flex flex-col gap-8">
@@ -65,6 +68,7 @@ export default async function SettingsPage() {
             initialResendKey={studio?.resend_api_key ?? null}
             initialSendingEmail={studio?.sending_email ?? null}
             initialSendingEmailName={studio?.sending_email_name ?? null}
+            canvaStatus={canvaStatus}
           />
         </section>
       )}

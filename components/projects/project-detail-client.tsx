@@ -27,6 +27,7 @@ import { SpecTab } from "@/components/projects/spec/spec-tab"
 import { StagePaymentsSection } from "@/components/projects/contractors/stage-payments-section"
 import { OrdersTab } from "@/components/projects/orders/orders-tab"
 import { PortfolioTab } from "@/components/projects/portfolio/portfolio-tab"
+import { MoodboardTab } from "@/components/projects/moodboard/moodboard-tab"
 import type { SiteUpdate } from "@/app/actions/site"
 import type { Meeting } from "@/app/actions/meetings"
 import type { RFI } from "@/app/actions/rfis"
@@ -39,6 +40,7 @@ import type { OrderTrackingRow, OrderSummary } from "@/app/actions/orders"
 import type { Vendor } from "@/app/actions/vendors"
 import type { QuoteRequest } from "@/app/actions/quotes"
 import type { PortfolioGalleryItem } from "@/app/actions/portfolio"
+import type { Moodboard } from "@/app/actions/moodboards"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
 import { updateProject, updateProjectContractValue } from "@/app/actions/projects"
 import { getProjectFinanceSummary } from "@/app/actions/finance"
@@ -138,6 +140,8 @@ export function ProjectDetailClient({
   vendors,
   initialQuoteRequests,
   initialGalleryItems,
+  initialMoodboards,
+  canvaConnected,
 }: {
   project: Project
   taskCounts: TaskCounts
@@ -167,6 +171,8 @@ export function ProjectDetailClient({
   vendors: Vendor[]
   initialQuoteRequests: QuoteRequest[]
   initialGalleryItems: PortfolioGalleryItem[]
+  initialMoodboards: Moodboard[]
+  canvaConnected: boolean
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -282,6 +288,7 @@ export function ProjectDetailClient({
           <TabsList className="overflow-x-auto flex w-full justify-start h-auto bg-transparent border-b rounded-none p-0 gap-0 mb-6">
             {[
               { label: "Overview",     value: "overview" },
+              { label: "Moodboard",    value: "moodboard" },
               { label: "Tasks",        value: "tasks" },
               { label: "Documents",    value: "documents" },
               { label: "Procurement",  value: "procurement" },
@@ -502,6 +509,16 @@ export function ProjectDetailClient({
                 </Card>
               </div>
             </div>
+          </TabsContent>
+
+          {/* ── Moodboard Tab ── */}
+          <TabsContent value="moodboard">
+            <MoodboardTab
+              projectId={localProject.id}
+              studioId={studioId}
+              canvaConnected={canvaConnected}
+              initialMoodboards={initialMoodboards}
+            />
           </TabsContent>
 
           {/* ── Tasks Tab ── */}

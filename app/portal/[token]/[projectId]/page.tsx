@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { getPortalProject, logPortalView } from "@/app/actions/client-portal"
+import { getPortalProject, logPortalView, getPortalMoodboards } from "@/app/actions/client-portal"
 import { Progress } from "@/components/ui/progress"
 
 const STATUS_BADGE: Record<string, string> = {
@@ -47,6 +47,7 @@ export default async function PortalProjectDetailPage({
   }
 
   logPortalView(token, projectId).catch(() => {})
+  const portalMoodboards = await getPortalMoodboards(token, projectId).catch(() => [])
 
   const totalPhases = project.phases.length
   const completedPhases = project.phases.filter((p) => p.status === "completed" || p.status === "done").length
@@ -190,6 +191,63 @@ export default async function PortalProjectDetailPage({
                   >
                     Download PDF
                   </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Moodboards */}
+      {portalMoodboards.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Moodboards</h2>
+          <div className="space-y-4">
+            {portalMoodboards.map((mb) => (
+              <div key={mb.id} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                {mb.canva_embed_url ? (
+                  <div className="w-full" style={{ height: 280 }}>
+                    <iframe
+                      src={mb.canva_embed_url}
+                      allowFullScreen
+                      loading="lazy"
+                      className="border-0 w-full h-full"
+                      title={mb.title}
+                    />
+                  </div>
+                ) : null}
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <h3 className="font-semibold text-gray-900">{mb.title}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      mb.status === "approved"
+                        ? "bg-green-100 text-green-700"
+                        : mb.status === "shared_with_client"
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-gray-100 text-gray-500"
+                    }`}>
+                      {mb.status === "approved"
+                        ? "Approved"
+                        : mb.status === "shared_with_client"
+                        ? "Awaiting review"
+                        : mb.status}
+                    </span>
+                  </div>
+                  {mb.description && (
+                    <p className="text-sm text-gray-500 mb-3">{mb.description}</p>
+                  )}
+                  {mb.client_feedback && (
+                    <div className="bg-amber-50 border border-amber-200 rounded p-2 mb-3">
+                      <p className="text-xs text-amber-800 font-medium">Your feedback</p>
+                      <p className="text-xs text-amber-900 mt-0.5">{mb.client_feedback}</p>
+                    </div>
+                  )}
+                  <Link
+                    href={`/share/moodboard/${mb.share_token}`}
+                    className="inline-block text-sm bg-[#1a1a2e] text-white px-4 py-2 rounded hover:bg-[#2d2d4e] transition-colors"
+                  >
+                    View &amp; Approve →
+                  </Link>
                 </div>
               </div>
             ))}

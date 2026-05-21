@@ -6,56 +6,84 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { PortfolioProject } from "@/app/actions/portfolio"
 
 const STATUS_COLORS: Record<string, string> = {
-  active:    "#1a1a2e",
-  on_hold:   "#f59e0b",
-  completed: "#10b981",
-  archived:  "#6b7280",
+  active:    "#1e3a5f",
+  on_hold:   "#78350f",
+  completed: "#134e3a",
+  archived:  "#64748b",
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  active:    { label: "Active",    className: "bg-green-100 text-green-700" },
-  on_hold:   { label: "On Hold",   className: "bg-amber-100 text-amber-700" },
-  completed: { label: "Completed", className: "bg-blue-100 text-blue-700" },
-  archived:  { label: "Archived",  className: "bg-gray-100 text-gray-500" },
+  active:    { label: "Active",    className: "bg-slate-100 text-slate-700" },
+  on_hold:   { label: "On Hold",   className: "bg-amber-50 text-amber-800" },
+  completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800" },
+  archived:  { label: "Archived",  className: "bg-slate-100 text-slate-500" },
 }
 
+// All colours hard-coded to light values — the Gantt sits on a white card
+// and must never inherit dark-mode CSS variables from the parent theme.
 const GANTT_STYLES = `
   .portfolio-gantt .gantt_container {
     font-family: Inter, Arial, sans-serif !important;
-    border: 1px solid hsl(var(--border)) !important;
+    border: 1px solid #e8edf2 !important;
     border-radius: 0.5rem !important;
     overflow: hidden !important;
+    background: #ffffff !important;
+    color: #334155 !important;
   }
   .portfolio-gantt .gantt_grid_scale,
   .portfolio-gantt .gantt_task_scale {
-    background: hsl(var(--muted)) !important;
-    border-bottom: 1px solid hsl(var(--border)) !important;
-  }
-  .portfolio-gantt .gantt_grid_head_cell {
+    background: #f6f8fa !important;
+    border-bottom: 1px solid #e8edf2 !important;
     color: #94a3b8 !important;
-    font-size: 11px !important;
+  }
+  .portfolio-gantt .gantt_grid_head_cell,
+  .portfolio-gantt .gantt_scale_cell {
+    color: #94a3b8 !important;
+    font-size: 10px !important;
     font-weight: 600 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
+    letter-spacing: 0.06em !important;
   }
-  .portfolio-gantt .gantt_row {
-    border-bottom: 1px solid hsl(var(--border)) !important;
+  .portfolio-gantt .gantt_grid_data,
+  .portfolio-gantt .gantt_task_bg {
+    background: #ffffff !important;
+  }
+  .portfolio-gantt .gantt_row,
+  .portfolio-gantt .gantt_row.odd {
+    background: #ffffff !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+  }
+  .portfolio-gantt .gantt_row:hover,
+  .portfolio-gantt .gantt_row.odd:hover {
+    background: #fafbfc !important;
   }
   .portfolio-gantt .gantt_cell {
     font-size: 13px !important;
+    color: #334155 !important;
+    border-right-color: #f1f5f9 !important;
+  }
+  .portfolio-gantt .gantt_grid_column_resize_wrap {
+    background: #e8edf2 !important;
+  }
+  .portfolio-gantt .gantt_task_line {
+    border-radius: 3px !important;
+  }
+  .portfolio-gantt .gantt_task_content {
+    color: rgba(255,255,255,0.92) !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.01em !important;
+  }
+  .portfolio-gantt .gantt_today_marker {
+    background: #e94560 !important;
+    opacity: 0.35 !important;
+    width: 1px !important;
+  }
+  .portfolio-gantt .gantt_task_progress {
+    border-radius: 3px 0 0 3px !important;
+    opacity: 0.25 !important;
   }
 `
-
-interface PhaseItem { start_date?: string; end_date?: string }
-
-function getProjectDates(phases: unknown): { start: string | null; end: string | null } {
-  if (!Array.isArray(phases) || phases.length === 0) return { start: null, end: null }
-  const typed = phases as PhaseItem[]
-  const starts = typed.filter((p) => p.start_date).map((p) => p.start_date!)
-  const ends = typed.filter((p) => p.end_date).map((p) => p.end_date!)
-  if (!starts.length || !ends.length) return { start: null, end: null }
-  return { start: starts.sort()[0], end: ends.sort().at(-1)! }
-}
 
 interface Props {
   projects: PortfolioProject[]
@@ -87,7 +115,6 @@ export function CrossProjectTimeline({ projects }: Props) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let ganttInstance: any
 
-    // Inject styles once
     const styleId = "portfolio-gantt-styles"
     if (!document.getElementById(styleId)) {
       const style = document.createElement("style")
@@ -108,8 +135,8 @@ export function CrossProjectTimeline({ projects }: Props) {
         ganttInstance.config.date_format = "%Y-%m-%d"
         ganttInstance.config.xml_date = "%Y-%m-%d"
         ganttInstance.config.row_height = 44
-        ganttInstance.config.bar_height = 28
-        ganttInstance.config.scale_height = 50
+        ganttInstance.config.bar_height = 26
+        ganttInstance.config.scale_height = 46
         ganttInstance.config.fit_tasks = true
         ganttInstance.config.drag_links = false
         ganttInstance.config.drag_move = false
@@ -120,31 +147,35 @@ export function CrossProjectTimeline({ projects }: Props) {
         ganttInstance.config.readonly = true
 
         ganttInstance.config.columns = [
-          { name: "text", label: "Project", tree: false, width: 180, resize: true },
-          { name: "client", label: "Client", width: 120, resize: true },
-          { name: "start_date", label: "Start", align: "center", width: 90 },
-          { name: "end_date", label: "End", align: "center", width: 90 },
+          { name: "text",       label: "Project", tree: false, width: 180, resize: true },
+          { name: "client",     label: "Client",              width: 120,  resize: true },
+          { name: "start_date", label: "Start",  align: "center", width: 90 },
+          { name: "end_date",   label: "End",    align: "center", width: 90 },
         ]
 
         ganttInstance.config.scales = [
           { unit: "month", step: 1, format: "%F %Y" },
         ]
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ganttInstance.templates.task_class = (_start: any, _end: any, task: any) => {
-          return `portfolio-gantt-bar-${task.status ?? "active"}`
-        }
-
-        // Inject bar colour styles
         const barStyleId = "portfolio-gantt-bar-styles"
         if (!document.getElementById(barStyleId)) {
           const barStyle = document.createElement("style")
           barStyle.id = barStyleId
           barStyle.textContent = Object.entries(STATUS_COLORS)
-            .map(([status, color]) => `.portfolio-gantt-bar-${status} .gantt_task_progress, .portfolio-gantt-bar-${status} { background:${color} !important; border-color:${color} !important; }`)
+            .map(([status, color]) =>
+              `.portfolio-gantt-bar-${status},
+               .portfolio-gantt-bar-${status} .gantt_task_progress {
+                 background: ${color} !important;
+                 border-color: ${color} !important;
+               }`
+            )
             .join("\n")
           document.head.appendChild(barStyle)
         }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ganttInstance.templates.task_class = (_start: any, _end: any, task: any) =>
+          `portfolio-gantt-bar-${task.status ?? "active"}`
 
         ganttInstance.clearAll()
 
@@ -154,8 +185,9 @@ export function CrossProjectTimeline({ projects }: Props) {
             const start = p.portfolio_year_completed
               ? `${p.portfolio_year_completed}-01-01`
               : today
+            // DHTMLX end_date is exclusive — use Jan 1 of next year for full-year bar
             const end = p.portfolio_year_completed
-              ? `${p.portfolio_year_completed}-12-31`
+              ? `${p.portfolio_year_completed + 1}-01-01`
               : today
             return {
               id: idx + 1,
@@ -165,7 +197,7 @@ export function CrossProjectTimeline({ projects }: Props) {
               end_date: end,
               duration: 1,
               status: p.status,
-              progress: p.status === "completed" ? 1 : p.status === "archived" ? 1 : 0.5,
+              progress: p.status === "completed" || p.status === "archived" ? 1 : 0.5,
             }
           })
           .filter((t) => t.start_date && t.end_date)
@@ -186,8 +218,7 @@ export function CrossProjectTimeline({ projects }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Filter */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as FilterType)}>
           <SelectTrigger className="w-40">
             <SelectValue />
@@ -199,10 +230,9 @@ export function CrossProjectTimeline({ projects }: Props) {
           </SelectContent>
         </Select>
 
-        {/* Colour key */}
-        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
           {Object.entries(STATUS_COLORS).map(([status, color]) => (
-            <span key={status} className="flex items-center gap-1">
+            <span key={status} className="flex items-center gap-1.5">
               <span className="inline-block w-3 h-3 rounded-sm" style={{ background: color }} />
               <span className="capitalize">{status.replace("_", " ")}</span>
             </span>
@@ -215,7 +245,6 @@ export function CrossProjectTimeline({ projects }: Props) {
           No projects found for the selected filter.
         </div>
       ) : isMobile ? (
-        /* Mobile: card list */
         <div className="flex flex-col gap-3">
           {filteredProjects.map((p) => {
             const statusMeta = STATUS_BADGE[p.status] ?? STATUS_BADGE.active
@@ -227,19 +256,18 @@ export function CrossProjectTimeline({ projects }: Props) {
                   <p className="font-semibold text-sm">{p.name}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{p.client_name}</p>
                   {(start || end) && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {start} → {end}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{start} → {end}</p>
                   )}
                 </div>
-                <Badge className={`text-xs border-0 shrink-0 ${statusMeta.className}`}>{statusMeta.label}</Badge>
+                <Badge className={`text-xs border-0 shrink-0 ${statusMeta.className}`}>
+                  {statusMeta.label}
+                </Badge>
               </div>
             )
           })}
         </div>
       ) : (
-        /* Desktop: DHTMLX Gantt */
-        <div className="portfolio-gantt">
+        <div className="portfolio-gantt rounded-lg overflow-hidden bg-white shadow-sm">
           <div ref={containerRef} style={{ width: "100%", height: 400 }} />
         </div>
       )}

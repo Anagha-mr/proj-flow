@@ -1,14 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react"
 import { updateStudioIntegrations, testWatiConnection, testResendEmail } from "@/app/actions/settings"
+import { disconnectCanva } from "@/app/actions/canva"
+import type { CanvaConnectionStatus } from "@/app/actions/canva"
 
 interface IntegrationsTabProps {
   studioId: string
@@ -17,6 +20,7 @@ interface IntegrationsTabProps {
   initialResendKey: string | null
   initialSendingEmail: string | null
   initialSendingEmailName: string | null
+  canvaStatus?: CanvaConnectionStatus | null
 }
 
 export function IntegrationsTab({
@@ -26,8 +30,11 @@ export function IntegrationsTab({
   initialResendKey,
   initialSendingEmail,
   initialSendingEmailName,
+  canvaStatus,
 }: IntegrationsTabProps) {
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+  const router = useRouter()
 
   // WATI state
   const [watiUrl, setWatiUrl] = useState(initialWatiUrl ?? "")
@@ -38,6 +45,66 @@ export function IntegrationsTab({
   const [watiStatus, setWatiStatus] = useState<"connected" | "failed" | null>(
     initialWatiUrl && initialWatiKey ? "connected" : null
   )
+
+  // Canva state
+  const [canvaConnected, setCanvaConnected] = useState(canvaStatus?.connected ?? false)
+  const [canvaExpired, setCanvaExpired] = useState(canvaStatus?.is_expired ?? false)
+  const [canvaUserId, setCanvaUserId] = useState(canvaStatus?.canva_user_id ?? null)
+  const [canvaConnecting, setCanvaConnecting] = useState(false)
+  const [canvaDisconnecting, setCanvaDisconnecting] = useState(false)
+  const [canvaDisconnectConfirm, setCanvaDisconnectConfirm] = useState(false)
+
+  // Handle ?canva= query params on mount
+  useEffect(() => {
+    const canvaParam = searchParams.get("canva")
+    if (canvaParam === "connected") {
+      toast({ title: "Canva connected successfully." })
+      setCanvaConnected(true)
+      setCanvaExpired(false)
+      const url = new URL(window.location.href)
+      url.searchParams.delete("canva")
+      router.replace(url.pathname + (url.search || ""))
+    } else if (canvaParam === "error") {
+      toast({ title: "Failed to connect Canva. Please try again.", variant: "destructive" })
+      const url = new URL(window.location.href)
+      url.searchParams.delete("canva")
+      router.replace(url.pathname + (url.search || ""))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function handleConnectCanva() {
+    setCanvaConnecting(true)
+    try {
+      const res = await fetch("/api/canva/auth")
+      if (!res.ok) throw new Error("Failed to get auth URL")
+      const { url } = await res.json()
+      window.location.href = url
+    } catch (err) {
+      toast({ title: String(err), variant: "destructive" })
+      setCanvaConnecting(false)
+    }
+  }
+
+  async function handleDisconnectCanva() {
+    if (!canvaDisconnectConfirm) {
+      setCanvaDisconnectConfirm(true)
+      return
+    }
+    setCanvaDisconnecting(true)
+    try {
+      await disconnectCanva()
+      setCanvaConnected(false)
+      setCanvaExpired(false)
+      setCanvaUserId(null)
+      setCanvaDisconnectConfirm(false)
+      toast({ title: "Canva disconnected" })
+    } catch (err) {
+      toast({ title: String(err), variant: "destructive" })
+    } finally {
+      setCanvaDisconnecting(false)
+    }
+  }
 
   // Resend state
   const [resendKey, setResendKey] = useState(initialResendKey ?? "")
@@ -132,6 +199,81 @@ export function IntegrationsTab({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Canva card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {/* Canva logomark */}
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="24" height="24" rx="6" fill="#7D2AE8"/>
+                <path d="M16.5 8.5C16.5 8.5 14.5 6 12 6C8.96 6 6.5 8.46 6.5 11.5C6.5 14.54 8.96 17 12 17C14.5 17 16.5 14.5 16.5 14.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              <CardTitle className="text-base font-semibold">Canva</CardTitle>
+            </div>
+            {canvaConnected && !canvaExpired && (
+              <Badge className="bg-green-100 text-green-700 border-green-200 gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Connected
+              </Badge>
+            )}
+            {canvaExpired && (
+              <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1">
+                <AlertTriangle className="w-3 h-3" /> Token expired
+              </Badge>
+            )}
+            {!canvaConnected && !canvaExpired && (
+              <Badge className="bg-gray-100 text-gray-500 border-gray-200 gap-1">
+                <XCircle className="w-3 h-3" /> Not connected
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Connect your Canva account to create and embed moodboards directly inside ProjectFlow.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {canvaConnected && !canvaExpired && canvaUserId && (
+            <p className="text-sm text-muted-foreground mb-3">
+              <span className="text-green-600">●</span> Connected as{" "}
+              <span className="font-medium">{canvaUserId}</span>
+            </p>
+          )}
+          <div className="flex gap-2">
+            {!canvaConnected || canvaExpired ? (
+              <Button
+                onClick={handleConnectCanva}
+                disabled={canvaConnecting}
+                className="bg-[#7D2AE8] hover:bg-[#6a24c8] text-white"
+              >
+                {canvaConnecting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                {canvaExpired ? "Reconnect" : "Connect Canva"}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleDisconnectCanva}
+                disabled={canvaDisconnecting}
+                className="text-destructive border-destructive hover:bg-destructive/10"
+              >
+                {canvaDisconnecting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                {canvaDisconnectConfirm ? "Confirm Disconnect" : "Disconnect"}
+              </Button>
+            )}
+            {canvaDisconnectConfirm && (
+              <Button variant="ghost" onClick={() => setCanvaDisconnectConfirm(false)}>
+                Cancel
+              </Button>
+            )}
+          </div>
+          {canvaDisconnectConfirm && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Disconnecting Canva will remove the connection but will not delete any existing
+              moodboard designs or embeds.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* WhatsApp / WATI card */}
       <Card>
         <CardHeader className="pb-3">

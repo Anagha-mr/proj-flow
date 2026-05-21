@@ -845,6 +845,127 @@ export async function notifyPOConfirmedByVendor(
   }
 }
 
+export async function notifyClientMoodboardShared(
+  studioId: string,
+  projectId: string,
+  moodboardTitle: string,
+  shareUrl: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+
+    const { data: project } = await supabase
+      .from("projects")
+      .select("name, client_id")
+      .eq("id", projectId)
+      .single()
+    if (!project?.client_id) return
+
+    const { data: client } = await supabase
+      .from("clients")
+      .select("name, whatsapp_number")
+      .eq("id", project.client_id)
+      .single()
+    if (!client?.whatsapp_number) return
+
+    await sendWhatsAppMessage({
+      to: client.whatsapp_number,
+      templateName: "moodboard_shared",
+      variables: { "1": client.name, "2": moodboardTitle, "3": shareUrl },
+      studioId,
+      recipientType: "client",
+      recipientId: project.client_id,
+      projectId,
+    })
+  } catch (err) {
+    console.error("notifyClientMoodboardShared error:", err)
+  }
+}
+
+export async function notifyMoodboardApproved(
+  studioId: string,
+  projectId: string,
+  moodboardTitle: string,
+  approvedByName: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+
+    const { data: owner } = await supabase
+      .from("users")
+      .select("name, whatsapp_number")
+      .eq("studio_id", studioId)
+      .eq("role", "owner")
+      .limit(1)
+      .single()
+    if (!owner?.whatsapp_number) return
+
+    const { data: project } = await supabase
+      .from("projects")
+      .select("name")
+      .eq("id", projectId)
+      .single()
+
+    await sendWhatsAppMessage({
+      to: owner.whatsapp_number,
+      templateName: "moodboard_approved",
+      variables: {
+        "1": moodboardTitle,
+        "2": approvedByName,
+        "3": project?.name ?? "",
+      },
+      studioId,
+      recipientType: "user",
+      recipientId: owner.whatsapp_number,
+      projectId,
+    })
+  } catch (err) {
+    console.error("notifyMoodboardApproved error:", err)
+  }
+}
+
+export async function notifyMoodboardRevisionRequested(
+  studioId: string,
+  projectId: string,
+  moodboardTitle: string,
+  feedback: string
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+
+    const { data: owner } = await supabase
+      .from("users")
+      .select("name, whatsapp_number")
+      .eq("studio_id", studioId)
+      .eq("role", "owner")
+      .limit(1)
+      .single()
+    if (!owner?.whatsapp_number) return
+
+    const { data: project } = await supabase
+      .from("projects")
+      .select("name")
+      .eq("id", projectId)
+      .single()
+
+    await sendWhatsAppMessage({
+      to: owner.whatsapp_number,
+      templateName: "moodboard_revision_requested",
+      variables: {
+        "1": moodboardTitle,
+        "2": feedback,
+        "3": project?.name ?? "",
+      },
+      studioId,
+      recipientType: "user",
+      recipientId: owner.whatsapp_number,
+      projectId,
+    })
+  } catch (err) {
+    console.error("notifyMoodboardRevisionRequested error:", err)
+  }
+}
+
 export async function notifyStagePaymentReleased(paymentId: string): Promise<void> {
   try {
     const supabase = createServiceClient()

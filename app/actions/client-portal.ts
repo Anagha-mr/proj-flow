@@ -312,6 +312,52 @@ export async function getPortalInvoices(portalToken: string): Promise<PortalInvo
   })
 }
 
+export async function getPortalMoodboards(
+  portalToken: string,
+  projectId: string
+): Promise<Array<{
+  id: string
+  title: string
+  description: string | null
+  canva_embed_url: string | null
+  status: string
+  client_feedback: string | null
+  client_approved_at: string | null
+  share_token: string
+}>> {
+  const supabase = await createClient()
+  const client = await validatePortalToken(portalToken)
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .eq("client_id", client.id)
+    .eq("studio_id", client.studio_id)
+    .single()
+
+  if (!project) return []
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase.from as any)("moodboards")
+    .select("id, title, description, canva_embed_url, status, client_feedback, client_approved_at, share_token")
+    .eq("project_id", projectId)
+    .eq("is_client_visible", true)
+    .order("display_order", { ascending: true })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((m: any) => ({
+    id: m.id,
+    title: m.title,
+    description: m.description,
+    canva_embed_url: m.canva_embed_url,
+    status: m.status,
+    client_feedback: m.client_feedback,
+    client_approved_at: m.client_approved_at,
+    share_token: m.share_token,
+  }))
+}
+
 export async function logPortalView(portalToken: string, projectId: string): Promise<void> {
   try {
     const supabase = await createClient()

@@ -32,6 +32,7 @@ export type PermissionAction =
   | "manage_purchase_orders"
   | "view_vendors"
   | "manage_portfolio"
+  | "manage_moodboards"
 
 export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
   owner: [
@@ -66,6 +67,7 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "manage_purchase_orders",
     "view_vendors",
     "manage_portfolio",
+    "manage_moodboards",
   ],
   senior_designer: [
     "view_financials",
@@ -92,6 +94,7 @@ export const ROLE_PERMISSIONS: Record<StudioRole, PermissionAction[]> = {
     "manage_purchase_orders",
     "view_vendors",
     "manage_portfolio",
+    "manage_moodboards",
   ],
   designer: [
     "manage_procurement",

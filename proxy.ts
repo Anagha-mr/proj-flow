@@ -11,7 +11,10 @@ export async function proxy(request: NextRequest) {
   if (
     pathname.startsWith("/portal/") ||
     pathname.startsWith("/contractor/") ||
-    pathname.startsWith("/vendor/")
+    pathname.startsWith("/vendor/") ||
+    pathname.startsWith("/share/moodboard/") ||
+    pathname.startsWith("/api/canva/callback") ||
+    pathname.startsWith("/api/moodboards/approve")
   ) {
     return NextResponse.next()
   }

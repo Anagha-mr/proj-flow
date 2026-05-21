@@ -16,6 +16,8 @@ import { getOrderTracking, getProjectOrderSummary } from "@/app/actions/orders"
 import { getVendors } from "@/app/actions/vendors"
 import { getQuoteRequests } from "@/app/actions/quotes"
 import { getGalleryItems } from "@/app/actions/portfolio"
+import { getMoodboards } from "@/app/actions/moodboards"
+import { getCanvaConnectionStatus } from "@/app/actions/canva"
 
 export const metadata: Metadata = { title: "Project" }
 
@@ -75,6 +77,8 @@ export default async function ProjectDetailPage({
     vendors,
     initialQuoteRequests,
     initialGalleryItems,
+    initialMoodboards,
+    canvaStatus,
   ] = await Promise.all([
     getProjectTaskCounts(id),
     getUpcomingTasks(id),
@@ -93,6 +97,8 @@ export default async function ProjectDetailPage({
     getVendors().catch(() => []),
     getQuoteRequests(id).catch(() => []),
     getGalleryItems(id).catch(() => []),
+    getMoodboards(id).catch(() => []),
+    getCanvaConnectionStatus().catch(() => ({ connected: false, canva_user_id: null, token_expires_at: null, is_expired: false })),
   ])
 
   const currentUserName = studioUsers.find((u) => u.id === user!.id)?.name ?? ""
@@ -127,6 +133,8 @@ export default async function ProjectDetailPage({
       vendors={vendors}
       initialQuoteRequests={initialQuoteRequests}
       initialGalleryItems={initialGalleryItems}
+      initialMoodboards={initialMoodboards}
+      canvaConnected={canvaStatus.connected && !canvaStatus.is_expired}
     />
   )
 }
