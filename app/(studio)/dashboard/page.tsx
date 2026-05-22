@@ -1,7 +1,10 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { FolderOpen, CheckSquare, Users, Wallet } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { FolderOpen, CheckSquare, Users, Wallet, AlertCircle } from "lucide-react"
+import { getPendingLeaveCount } from "@/app/actions/team"
 
 export const metadata: Metadata = { title: "Dashboard" }
 
@@ -9,14 +12,19 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("name, studio:studios(name, plan_tier)")
-    .eq("id", user!.id)
-    .single()
+  const [profileResult, pendingLeaveCount] = await Promise.all([
+    supabase
+      .from("users")
+      .select("name, role, studio:studios(name, plan_tier)")
+      .eq("id", user!.id)
+      .single(),
+    getPendingLeaveCount().catch(() => 0),
+  ])
 
+  const profile = profileResult.data
   const studioName = (profile?.studio as { name?: string } | null)?.name ?? "Your Studio"
   const firstName = profile?.name?.split(" ")[0] ?? "there"
+  const isOwnerOrSenior = profile?.role === "owner" || profile?.role === "senior_designer"
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,7 +36,20 @@ export default async function DashboardPage() {
         <p className="text-muted-foreground text-sm mt-1">{studioName} — here's your studio at a glance</p>
       </div>
 
-      {/* Stat cards — will be dynamic in later sprints */}
+      {/* Pending leave alert */}
+      {isOwnerOrSenior && pendingLeaveCount > 0 && (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="flex items-center gap-2">
+            You have {pendingLeaveCount} pending leave request{pendingLeaveCount !== 1 ? "s" : ""} awaiting review.{" "}
+            <Link href="/dashboard/team?tab=leave" className="font-medium underline underline-offset-2 hover:no-underline">
+              Review
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={FolderOpen} label="Active Projects" value="—" color="bg-primary/10 text-primary" />
         <StatCard icon={CheckSquare} label="Tasks Due Today" value="—" color="bg-warning/10 text-warning" />

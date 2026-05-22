@@ -966,6 +966,14 @@ export async function notifyMoodboardRevisionRequested(
   }
 }
 
+export async function notifyLeaveRequest(leaveRequestId: string): Promise<void> {
+  console.log('NOTIFY: new leave request', leaveRequestId)
+}
+
+export async function notifyLeaveDecision(leaveRequestId: string, decision: 'approved' | 'rejected'): Promise<void> {
+  console.log('NOTIFY: leave decision', decision, leaveRequestId)
+}
+
 export async function notifyStagePaymentReleased(paymentId: string): Promise<void> {
   try {
     const supabase = createServiceClient()
