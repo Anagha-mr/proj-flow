@@ -624,3 +624,86 @@ export async function updateProjectContractValue(
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath('/dashboard/finance')
 }
+
+// ─── getProjectName (Sprint 15 — lightweight for sidebar / breadcrumb) ────────
+export async function getProjectName(projectId: string): Promise<string | null> {
+  try {
+    const { supabase, studioId } = await getAuthContext()
+    const { data } = await supabase
+      .from("projects")
+      .select("name")
+      .eq("id", projectId)
+      .eq("studio_id", studioId)
+      .single()
+    return data?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+// ─── SearchIndex types & getSearchIndex (Sprint 15 — command palette) ─────────
+export interface SearchIndex {
+  projects:  Array<{ id: string; name: string; client_name: string }>
+  tasks:     Array<{ id: string; title: string; project_id: string; project_name: string }>
+  documents: Array<{ id: string; name: string; project_id: string; project_name: string }>
+}
+
+export async function getSearchIndex(): Promise<SearchIndex> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const [projectsRes, tasksRes, documentsRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, name, client:clients(name)")
+      .eq("studio_id", studioId)
+      .neq("status", "archived")
+      .order("updated_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("tasks")
+      .select("id, title, project_id")
+      .eq("studio_id", studioId)
+      .neq("status", "done")
+      .order("updated_at", { ascending: false })
+      .limit(500),
+    supabase
+      .from("documents")
+      .select("id, name, project_id")
+      .eq("studio_id", studioId)
+      .order("uploaded_at", { ascending: false })
+      .limit(300),
+  ])
+
+  // Build project name lookup map
+  const projectRows = (projectsRes.data ?? []) as Array<{
+    id: string
+    name: string
+    client: { name: string } | null
+  }>
+  const nameMap: Record<string, string> = {}
+  projectRows.forEach((p) => { nameMap[p.id] = p.name })
+
+  const projects = projectRows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    client_name: p.client?.name ?? "",
+  }))
+
+  const tasks = ((tasksRes.data ?? []) as Array<{ id: string; title: string; project_id: string }>)
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      project_id: t.project_id,
+      project_name: nameMap[t.project_id] ?? "",
+    }))
+
+  const documents = ((documentsRes.data ?? []) as Array<{ id: string; name: string; project_id: string }>)
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      project_id: d.project_id,
+      project_name: nameMap[d.project_id] ?? "",
+    }))
+
+  return { projects, tasks, documents }
+}

@@ -42,7 +42,7 @@ export default async function DashboardPage() {
           <AlertCircle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="flex items-center gap-2">
             You have {pendingLeaveCount} pending leave request{pendingLeaveCount !== 1 ? "s" : ""} awaiting review.{" "}
-            <Link href="/dashboard/team?tab=leave" className="font-medium underline underline-offset-2 hover:no-underline">
+            <Link href="/dashboard/team" className="font-medium underline underline-offset-2 hover:no-underline">
               Review
             </Link>
           </AlertDescription>

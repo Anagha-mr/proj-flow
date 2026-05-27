@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { SidebarProvider } from "@/components/layout/sidebar-context"
 import { Sidebar } from "@/components/layout/sidebar"
 import { TopBar } from "@/components/layout/top-bar"
-import { SidebarProvider } from "@/components/layout/sidebar-context"
+import { CommandPalette } from "@/components/layout/command-palette"
 import { OnboardingModal } from "@/components/dashboard/onboarding-modal"
 
 export default async function StudioLayout({ children }: { children: React.ReactNode }) {
@@ -19,7 +20,6 @@ export default async function StudioLayout({ children }: { children: React.React
 
   const studioId = data?.studio_id ?? null
 
-  // OAuth users with no studio yet → let them create one first
   if (!studioId) redirect("/onboarding")
 
   const studio = data?.studio as { id: string; name: string; onboarding_complete: boolean } | null
@@ -28,15 +28,29 @@ export default async function StudioLayout({ children }: { children: React.React
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen overflow-hidden">
+      <div
+        className="flex h-screen overflow-hidden"
+        style={{ background: "var(--color-shell, #0D0F1A)" }}
+      >
+        {/* Sidebar — handles its own collapse + mobile sheet */}
         <Sidebar />
+
+        {/* Main content area */}
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
           <TopBar />
-          <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
+          <main
+            className="flex-1 overflow-y-auto p-6"
+            style={{ background: "var(--color-shell, #0D0F1A)" }}
+          >
             {children}
           </main>
         </div>
       </div>
+
+      {/* Command Palette — global, renders as Dialog portal */}
+      <CommandPalette />
+
+      {/* Onboarding modal */}
       {showOnboarding && (
         <OnboardingModal studioId={studioId} studioName={studioName} />
       )}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { LayoutGrid, List, BarChart2, Plus, Search, ChevronDown, AlertCircle, X } from "lucide-react"
+import { LayoutGrid, List, Plus, Search, ChevronDown, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,7 +19,6 @@ import { getTasks, createTask, getTaskDependencies } from "@/app/actions/tasks"
 import type { TaskWithDetails, TaskDependency } from "@/app/actions/tasks"
 import { KanbanView } from "./kanban-view"
 import { ListView } from "./list-view"
-import { GanttView } from "./gantt-view"
 import { TaskDetailPanel } from "./task-detail-panel"
 
 type PhaseItem = { id: string; name: string; color: string; start_date?: string; end_date?: string }
@@ -54,7 +53,7 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
   const [tasks, setTasks] = useState<TaskWithDetails[]>([])
   const [dependencies, setDependencies] = useState<TaskDependency[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<"kanban" | "list" | "gantt">("kanban")
+  const [view, setView] = useState<"kanban" | "list">("kanban")
   const [groupBy, setGroupBy] = useState("phase")
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [search, setSearch] = useState("")
@@ -234,15 +233,6 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
               <List className="w-3.5 h-3.5" />
               List
             </Button>
-            <Button
-              variant={view === "gantt" ? "default" : "ghost"}
-              size="sm"
-              className={`h-8 px-3 rounded-none gap-1.5 hidden sm:flex ${view === "gantt" ? "bg-[#1a1a2e] text-white hover:bg-[#1a1a2e]" : ""}`}
-              onClick={() => setView("gantt")}
-            >
-              <BarChart2 className="w-3.5 h-3.5" />
-              Timeline
-            </Button>
           </div>
 
           <Button
@@ -383,15 +373,6 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
           />
         )}
 
-        {!loading && view === "gantt" && (
-          <GanttView
-            tasks={filteredTasks}
-            projectPhases={projectPhases}
-            dependencies={dependencies}
-            onTaskClick={openTask}
-            onStatusChange={handleStatusChange}
-          />
-        )}
       </div>
 
       {/* Task Detail Panel */}

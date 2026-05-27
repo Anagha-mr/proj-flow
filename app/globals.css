@@ -99,6 +99,23 @@
   }
 }
 
+/* ─── V5 Navigation Shell — solid tokens (become Tailwind utilities) ─────── */
+@theme inline {
+  --color-shell:         #0D0F1A;
+  --color-shell-surface: #1A1D2E;
+  --color-shell-accent:  #E24B4A;
+  --color-shell-card:    #111320;
+}
+
+/* ─── V5 Navigation Shell — rgba tokens (used via var() in components) ──── */
+:root {
+  --shell-accent-muted:   rgba(226, 75, 74, 0.08);
+  --shell-text-secondary: rgba(255, 255, 255, 0.65);
+  --shell-text-muted:     rgba(255, 255, 255, 0.35);
+  --shell-border:         rgba(255, 255, 255, 0.06);
+  --shell-border-emphasis: rgba(255, 255, 255, 0.12);
+}
+
 /* ─── Base styles ─────────────────────────────────────────────── */
 * {
   border-color: var(--color-border);
