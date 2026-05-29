@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/health-scores",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/morning-alerts",
+      "schedule": "30 2 * * *"
+    }
+  ]
+}

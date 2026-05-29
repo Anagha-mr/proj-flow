@@ -974,6 +974,15 @@ export async function notifyLeaveDecision(leaveRequestId: string, decision: 'app
   console.log('NOTIFY: leave decision', decision, leaveRequestId)
 }
 
+// ─── Sprint 16: notifyProjectHealthAlert (stub — wired in Sprint 19) ─────────
+
+export async function notifyProjectHealthAlert(
+  projectId: string,
+  signals: import('./dashboard').HealthSignals
+): Promise<void> {
+  console.log('NOTIFY: project health alert', projectId, signals.overall)
+}
+
 export async function notifyStagePaymentReleased(paymentId: string): Promise<void> {
   try {
     const supabase = createServiceClient()

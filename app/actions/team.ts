@@ -722,3 +722,9 @@ export async function getPendingLeaveCount(): Promise<number> {
 
   return count ?? 0
 }
+
+// ─── getPendingLeaveRequestsCount (Sprint 16 — dashboard widget) ─────────────
+
+export async function getPendingLeaveRequestsCount(): Promise<number> {
+  return getPendingLeaveCount()
+}

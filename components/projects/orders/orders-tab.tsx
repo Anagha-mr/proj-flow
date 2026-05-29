@@ -109,17 +109,49 @@ export function OrdersTab({ orderTracking: initialTracking, orderSummary: initia
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Summary strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { label: 'Total Orders', value: summary.total_orders, red: false },
-          { label: 'Delivered', value: summary.delivered, red: false },
-          { label: 'In Transit', value: summary.in_transit, red: false },
-          { label: 'Delayed', value: summary.delayed, red: summary.delayed > 0 },
-        ].map((chip) => (
-          <div key={chip.label} className={`rounded-xl border p-4 ${chip.red && chip.value > 0 ? 'border-red-200 bg-red-50' : 'bg-white'}`}>
-            <p className="text-xs text-muted-foreground">{chip.label}</p>
-            <p className={`text-2xl font-bold ${chip.red && chip.value > 0 ? 'text-red-600' : ''}`}>{chip.value}</p>
+          {
+            label: 'Total Orders',
+            value: String(summary.total_orders),
+            sub: null,
+            alert: false,
+          },
+          {
+            label: 'Pending Delivery',
+            value: String(Math.max(0, summary.total_orders - summary.delivered)),
+            sub: summary.delayed > 0 ? `${summary.delayed} delayed` : null,
+            alert: summary.delayed > 0,
+          },
+          {
+            label: 'Total Order Value',
+            value: Number(summary.total_value_ordered).toLocaleString('en-IN', {
+              style: 'currency',
+              currency: 'INR',
+              maximumFractionDigits: 0,
+            }),
+            sub: null,
+            alert: false,
+          },
+        ].map((card) => (
+          <div
+            key={card.label}
+            className="rounded-[10px] p-4"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '0.5px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <p className="text-[10px] font-medium tracking-[0.07em] uppercase text-muted-foreground mb-1">
+              {card.label}
+            </p>
+            <p className="text-[22px] font-medium text-foreground leading-none">{card.value}</p>
+            {card.sub && (
+              <p className="text-xs mt-1" style={{ color: card.alert ? '#E24B4A' : 'var(--muted-foreground)' }}>
+                {card.sub}
+              </p>
+            )}
           </div>
         ))}
       </div>

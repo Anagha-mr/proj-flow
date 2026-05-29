@@ -38,6 +38,7 @@ const PRIORITY_COLORS: Record<string, { dot: string; label: string }> = {
 const COLUMNS = [
   { id: "todo", label: "To Do", headerColor: "text-[#e94560]", countBg: "bg-[#e94560]/10 text-[#e94560]" },
   { id: "in_progress", label: "In Progress", headerColor: "text-blue-600", countBg: "bg-blue-50 text-blue-600" },
+  { id: "review", label: "Review", headerColor: "text-purple-600", countBg: "bg-purple-50 text-purple-600" },
   { id: "done", label: "Done", headerColor: "text-green-600", countBg: "bg-green-50 text-green-600" },
 ]
 

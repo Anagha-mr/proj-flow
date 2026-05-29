@@ -721,3 +721,76 @@ export async function removeTaskAssignee(taskId: string, assigneeUserId: string)
   const { data: task } = await supabase.from("tasks").select("project_id").eq("id", taskId).single()
   if (task?.project_id) revalidatePath(`/dashboard/projects/${task.project_id}`)
 }
+
+// ─── Sprint 16: getMyTasksToday ───────────────────────────────────────────────
+
+export interface MyTask {
+  id: string
+  title: string
+  projectId: string
+  projectName: string
+  dueDate: string
+  status: 'todo' | 'in_progress' | 'review' | 'done'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+}
+
+export async function getMyTasksToday(): Promise<MyTask[]> {
+  const { supabase, userId } = await getAuthContext()
+
+  const today = new Date().toISOString().split('T')[0]
+  const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  // Fetch task assignee rows for this user
+  const { data: assigneeRows } = await supabase
+    .from('task_assignees')
+    .select('task_id')
+    .eq('user_id', userId)
+
+  const taskIds = (assigneeRows ?? []).map((a) => a.task_id)
+  if (taskIds.length === 0) return []
+
+  // Fetch tasks due within 7 days (not done)
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select('id, title, project_id, due_date, status, priority')
+    .in('id', taskIds)
+    .neq('status', 'done')
+    .lte('due_date', in7Days)
+
+  if (!tasks || tasks.length === 0) return []
+
+  // Fetch project names separately
+  const projectIds = [...new Set(tasks.map((t) => t.project_id))]
+  const { data: projects } = await supabase
+    .from('projects')
+    .select('id, name')
+    .in('id', projectIds)
+
+  const projectNameMap: Record<string, string> = {}
+  for (const p of projects ?? []) projectNameMap[p.id] = p.name
+
+  const result: MyTask[] = tasks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    projectId: t.project_id,
+    projectName: projectNameMap[t.project_id] ?? 'Unknown',
+    dueDate: t.due_date ?? today,
+    status: (t.status ?? 'todo') as MyTask['status'],
+    priority: (t.priority ?? 'medium') as MyTask['priority'],
+  }))
+
+  const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+
+  // Sort: overdue first, then by due_date ASC, then priority DESC
+  result.sort((a, b) => {
+    const aOverdue = a.dueDate < today
+    const bOverdue = b.dueDate < today
+    if (aOverdue && !bOverdue) return -1
+    if (!aOverdue && bOverdue) return 1
+    const dateDiff = a.dueDate.localeCompare(b.dueDate)
+    if (dateDiff !== 0) return dateDiff
+    return (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2)
+  })
+
+  return result.slice(0, 10)
+}

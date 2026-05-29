@@ -8,25 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { createClient, updateClient } from "@/app/actions/projects"
-
-const INDIAN_STATES = [
-  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
-  "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
-  "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan",
-  "Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
-  "Andaman and Nicobar Islands","Chandigarh","Dadra and Nagar Haveli and Daman and Diu",
-  "Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry",
-]
-
-const STATE_CODES: Record<string, string> = {
-  "Andhra Pradesh": "AP","Arunachal Pradesh": "AR","Assam": "AS","Bihar": "BR",
-  "Chhattisgarh": "CG","Goa": "GA","Gujarat": "GJ","Haryana": "HR","Himachal Pradesh": "HP",
-  "Jharkhand": "JH","Karnataka": "KA","Kerala": "KL","Madhya Pradesh": "MP","Maharashtra": "MH",
-  "Manipur": "MN","Meghalaya": "ML","Mizoram": "MZ","Nagaland": "NL","Odisha": "OD",
-  "Punjab": "PB","Rajasthan": "RJ","Sikkim": "SK","Tamil Nadu": "TN","Telangana": "TG",
-  "Tripura": "TR","Uttar Pradesh": "UP","Uttarakhand": "UK","West Bengal": "WB",
-  "Delhi": "DL",
-}
+import { INDIAN_STATE_CODES } from "@/lib/utils/gst-states"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ClientRow = Record<string, any>
@@ -67,9 +49,7 @@ export function AddClientSheet({ open, onOpenChange, editClient, onSaved }: AddC
       setAddress1(editClient.address_line1 ?? "")
       setAddress2(editClient.address_line2 ?? "")
       setPostcode(editClient.postcode ?? "")
-      const sc = editClient.state_code ?? ""
-      const found = Object.entries(STATE_CODES).find(([, v]) => v === sc)?.[0] ?? ""
-      setStateName(found)
+      setStateName(editClient.state_code ?? "")
       setPreferredComms(editClient.preferred_comms ?? "whatsapp")
       setAvailableHours(editClient.available_hours ?? "")
     } else {
@@ -85,7 +65,6 @@ export function AddClientSheet({ open, onOpenChange, editClient, onSaved }: AddC
       return
     }
     setSaving(true)
-    const stateCode = STATE_CODES[stateName] ?? stateName
     const payload = {
       name: name.trim(),
       company: company.trim() || null,
@@ -96,7 +75,7 @@ export function AddClientSheet({ open, onOpenChange, editClient, onSaved }: AddC
       address_line1: address1.trim() || null,
       address_line2: address2.trim() || null,
       postcode: postcode.trim() || null,
-      state_code: stateCode || null,
+      state_code: stateName || null,
       preferred_comms: preferredComms,
       available_hours: availableHours.trim() || null,
     }
@@ -172,7 +151,9 @@ export function AddClientSheet({ open, onOpenChange, editClient, onSaved }: AddC
               <Select value={stateName} onValueChange={setStateName}>
                 <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent>
-                  {INDIAN_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {INDIAN_STATE_CODES.map((s) => (
+                    <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
