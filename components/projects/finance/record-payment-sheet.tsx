@@ -14,21 +14,33 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Trash2 } from "lucide-react"
-import { recordPayment, deletePayment, type Invoice, type InvoicePayment } from "@/app/actions/finance"
+import { CheckCircle, Trash2 } from "lucide-react"
+import {
+  recordPayment,
+  deletePayment,
+  type Invoice,
+  type InvoicePayment,
+} from "@/app/actions/finance"
+import { recordManualPayment } from "@/app/actions/payments"
 import { useToast } from "@/hooks/use-toast"
 import { format } from "date-fns"
 
 function formatINR(amount: number) {
-  return amount.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
+  return amount.toLocaleString("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  })
 }
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  draft:   { label: "Draft",   className: "bg-slate-100 text-slate-600" },
-  sent:    { label: "Sent",    className: "bg-blue-100 text-blue-700" },
-  partial: { label: "Partial", className: "bg-amber-100 text-amber-700" },
-  paid:    { label: "Paid",    className: "bg-green-100 text-green-700" },
-  overdue: { label: "Overdue", className: "bg-red-100 text-red-700" },
+  draft:          { label: "Draft",    className: "bg-slate-100 text-slate-600" },
+  sent:           { label: "Sent",     className: "bg-blue-100 text-blue-700" },
+  partial:        { label: "Partial",  className: "bg-amber-100 text-amber-700" },
+  partially_paid: { label: "Partial",  className: "bg-amber-100 text-amber-700" },
+  paid:           { label: "Paid",     className: "bg-green-100 text-green-700" },
+  overdue:        { label: "Overdue",  className: "bg-red-100 text-red-700" },
+  cancelled:      { label: "Cancelled",className: "bg-slate-100 text-slate-500" },
 }
 
 interface RecordPaymentSheetProps {
@@ -45,10 +57,16 @@ export function RecordPaymentSheet({
   onRefresh,
 }: RecordPaymentSheetProps) {
   const { toast } = useToast()
-  const amountDue = invoice.amount_due ?? 0
+  const amountDue =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((invoice as any).amount_outstanding as number | undefined) ??
+    invoice.amount_due ??
+    0
 
   const [amount, setAmount] = useState(amountDue > 0 ? String(amountDue) : "")
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0])
+  const [paymentDate, setPaymentDate] = useState(
+    new Date().toISOString().split("T")[0]
+  )
   const [bankReference, setBankReference] = useState("")
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
@@ -57,28 +75,54 @@ export function RecordPaymentSheet({
 
   const statusMeta = STATUS_META[invoice.status] ?? STATUS_META.draft
 
+  const enteredAmount = parseFloat(amount) || 0
+  const afterRecording = amountDue - enteredAmount
+  const isFullyPaid = enteredAmount >= amountDue && enteredAmount > 0
+  const isPartial = enteredAmount > 0 && enteredAmount < amountDue
+  const isOverAmount = enteredAmount > amountDue && amountDue > 0
+
   async function handleRecord() {
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) {
       toast({ title: "Enter a valid amount", variant: "destructive" })
       return
     }
+    if (new Date(paymentDate) > new Date()) {
+      toast({ title: "Payment date cannot be in the future", variant: "destructive" })
+      return
+    }
+
     setSaving(true)
     try {
-      await recordPayment({
-        invoiceId: invoice.id,
-        amount: amt,
-        paymentDate,
-        bankReference: bankReference || undefined,
-        notes: notes || undefined,
-      })
+      // Use the new Sprint 17 action if available, fall back to old recordPayment
+      try {
+        await recordManualPayment(invoice.id, {
+          amount: amt,
+          paymentDate,
+          bankReference: bankReference || undefined,
+          notes: notes || undefined,
+        })
+      } catch {
+        // Fallback to Sprint 6 action if new action fails (e.g. column not migrated)
+        await recordPayment({
+          invoiceId: invoice.id,
+          amount: amt,
+          paymentDate,
+          bankReference: bankReference || undefined,
+          notes: notes || undefined,
+        })
+      }
       toast({ title: `Payment of ${formatINR(amt)} recorded` })
       setAmount("")
       setBankReference("")
       setNotes("")
       onRefresh()
     } catch (err) {
-      toast({ title: err instanceof Error ? err.message : "Failed to record payment", variant: "destructive" })
+      toast({
+        title:
+          err instanceof Error ? err.message : "Failed to record payment",
+        variant: "destructive",
+      })
     } finally {
       setSaving(false)
     }
@@ -104,47 +148,65 @@ export function RecordPaymentSheet({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-[440px] overflow-y-auto">
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-[440px] overflow-y-auto"
+        >
           <SheetHeader>
             <div className="flex items-center gap-2 flex-wrap">
-              <SheetTitle>{invoice.invoice_number}</SheetTitle>
+              <SheetTitle>Record Payment</SheetTitle>
               <Badge className={`text-xs px-2 py-0.5 ${statusMeta.className}`}>
                 {statusMeta.label}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
+              Invoice {invoice.invoice_number} · {formatINR(invoice.total)} total
+            </p>
+            <p className="text-sm font-medium">
               {formatINR(amountDue)} outstanding
             </p>
           </SheetHeader>
 
           <div className="flex flex-col gap-4 mt-5">
-            {/* Amount */}
+            {/* Amount with ₹ prefix */}
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Amount *</label>
-              <Input
-                type="number"
-                min={0}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0"
-                className="focus-visible:ring-[#e94560]"
-              />
+              <label className="text-sm font-medium mb-1.5 block">
+                Amount *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none select-none">
+                  ₹
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0"
+                  className="pl-6 focus-visible:ring-[#e94560]"
+                />
+              </div>
             </div>
 
             {/* Payment Date */}
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Payment Date *</label>
+              <label className="text-sm font-medium mb-1.5 block">
+                Payment Date *
+              </label>
               <Input
                 type="date"
                 value={paymentDate}
                 onChange={(e) => setPaymentDate(e.target.value)}
+                max={new Date().toISOString().split("T")[0]}
                 className="focus-visible:ring-[#e94560]"
               />
             </div>
 
             {/* Bank Reference */}
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Bank Reference / Transaction ID</label>
+              <label className="text-sm font-medium mb-1.5 block">
+                Bank Reference / UTR
+              </label>
               <Input
                 value={bankReference}
                 onChange={(e) => setBankReference(e.target.value)}
@@ -164,10 +226,45 @@ export function RecordPaymentSheet({
               />
             </div>
 
+            {/* Live preview */}
+            {enteredAmount > 0 && (
+              <div
+                className={`text-sm px-3 py-2 rounded-md border ${
+                  isFullyPaid
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : isOverAmount
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : isPartial
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-muted bg-muted/50 text-muted-foreground"
+                }`}
+              >
+                {isFullyPaid ? (
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Fully paid ✓
+                  </span>
+                ) : isOverAmount ? (
+                  <span>
+                    Overpayment of {formatINR(enteredAmount - amountDue)} — invoice
+                    will be marked paid
+                  </span>
+                ) : (
+                  <span>
+                    After recording:{" "}
+                    <span className="font-medium">
+                      {formatINR(afterRecording)}
+                    </span>{" "}
+                    outstanding
+                  </span>
+                )}
+              </div>
+            )}
+
             <Button
               className="bg-[#e94560] hover:bg-[#c73652] text-white"
               onClick={handleRecord}
-              disabled={saving}
+              disabled={saving || enteredAmount <= 0}
             >
               {saving ? "Recording…" : "Record Payment"}
             </Button>
@@ -178,29 +275,42 @@ export function RecordPaymentSheet({
             <div>
               <p className="text-sm font-semibold mb-3">Payment History</p>
               {payments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No payments recorded yet</p>
+                <p className="text-sm text-muted-foreground">
+                  No payments recorded yet
+                </p>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {payments.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex items-center justify-between gap-2 py-2 border-b last:border-b-0"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{formatINR(p.amount)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(p.payment_date), "dd MMM yyyy")}
-                          {p.bank_reference && ` · ${p.bank_reference}`}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setDeleteTarget(p)}
-                        className="text-muted-foreground hover:text-red-600 transition-colors shrink-0"
+                  {payments.map((p) => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const source = (p as any).payment_source as string | undefined
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 py-2 border-b last:border-b-0"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">
+                            {formatINR(p.amount)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(p.payment_date), "dd MMM yyyy")}
+                            {p.bank_reference && ` · ${p.bank_reference}`}
+                            {source === "razorpay_webhook" && (
+                              <span className="ml-1 text-blue-600">· via Razorpay</span>
+                            )}
+                          </p>
+                        </div>
+                        {source !== "razorpay_webhook" && (
+                          <button
+                            onClick={() => setDeleteTarget(p)}
+                            className="text-muted-foreground hover:text-red-600 transition-colors shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -209,7 +319,10 @@ export function RecordPaymentSheet({
       </Sheet>
 
       {/* Delete payment confirm */}
-      <Dialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reverse Payment</DialogTitle>
@@ -222,8 +335,17 @@ export function RecordPaymentSheet({
             and update the invoice status.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDeletePayment} disabled={deleting}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeletePayment}
+              disabled={deleting}
+            >
               {deleting ? "Reversing…" : "Reverse Payment"}
             </Button>
           </DialogFooter>

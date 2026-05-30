@@ -5,7 +5,6 @@ import { Lock } from "lucide-react"
 import { hasPermission } from "@/lib/permissions"
 import type { StudioRole } from "@/lib/supabase/types"
 import {
-  getInvoices,
   getExpenses,
   getProjectFinanceSummary,
   markOverdue,
@@ -13,6 +12,7 @@ import {
   type ExpenseEntry,
   type ProjectFinanceSummary,
 } from "@/app/actions/finance"
+import { getProjectInvoices, type InvoiceWithPayments } from "@/app/actions/payments"
 import { useToast } from "@/hooks/use-toast"
 import { FinanceSummary } from "./finance-summary"
 import { InvoicesSection } from "./invoices-section"
@@ -47,7 +47,7 @@ export function FinanceTab({
   const { toast } = useToast()
   const canView = hasPermission(userRole as StudioRole, "view_financials")
 
-  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invoices, setInvoices] = useState<InvoiceWithPayments[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
   const [summary, setSummary] = useState<ProjectFinanceSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,7 +56,7 @@ export function FinanceTab({
     setLoading(true)
     try {
       const [inv, exp, sum] = await Promise.all([
-        getInvoices(projectId),
+        getProjectInvoices(projectId),
         getExpenses(projectId),
         getProjectFinanceSummary(projectId),
       ])

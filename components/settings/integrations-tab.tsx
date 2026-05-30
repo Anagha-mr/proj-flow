@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react"
 import { updateStudioIntegrations, testWatiConnection, testResendEmail } from "@/app/actions/settings"
@@ -21,6 +22,10 @@ interface IntegrationsTabProps {
   initialSendingEmail: string | null
   initialSendingEmailName: string | null
   canvaStatus?: CanvaConnectionStatus | null
+  initialRazorpayKeyId?: string | null
+  initialRazorpayKeySecret?: string | null
+  initialRazorpayWebhookSecret?: string | null
+  initialRazorpayPassFee?: boolean
 }
 
 export function IntegrationsTab({
@@ -31,6 +36,10 @@ export function IntegrationsTab({
   initialSendingEmail,
   initialSendingEmailName,
   canvaStatus,
+  initialRazorpayKeyId,
+  initialRazorpayKeySecret,
+  initialRazorpayWebhookSecret,
+  initialRazorpayPassFee = false,
 }: IntegrationsTabProps) {
   const { toast } = useToast()
   const searchParams = useSearchParams()
@@ -117,6 +126,18 @@ export function IntegrationsTab({
     initialResendKey && initialSendingEmail ? "connected" : null
   )
 
+  // Razorpay state
+  const [razorpayKeyId, setRazorpayKeyId] = useState(initialRazorpayKeyId ?? "")
+  const [razorpayKeySecret, setRazorpayKeySecret] = useState(initialRazorpayKeySecret ?? "")
+  const [razorpayWebhookSecret, setRazorpayWebhookSecret] = useState(initialRazorpayWebhookSecret ?? "")
+  const [razorpayPassFee, setRazorpayPassFee] = useState(initialRazorpayPassFee)
+  const [showRazorpaySecret, setShowRazorpaySecret] = useState(false)
+  const [showRazorpayWebhookSecret, setShowRazorpayWebhookSecret] = useState(false)
+  const [razorpaySaving, setRazorpaySaving] = useState(false)
+  const [razorpayStatus, setRazorpayStatus] = useState<"connected" | "failed" | null>(
+    initialRazorpayKeyId && initialRazorpayKeySecret ? "connected" : null
+  )
+
   async function saveWati() {
     setWatiSaving(true)
     try {
@@ -181,6 +202,24 @@ export function IntegrationsTab({
       toast({ title: String(err), variant: "destructive" })
     } finally {
       setResendTesting(false)
+    }
+  }
+
+  async function saveRazorpay() {
+    setRazorpaySaving(true)
+    try {
+      await updateStudioIntegrations({
+        razorpay_key_id: razorpayKeyId.trim() || null,
+        razorpay_key_secret: razorpayKeySecret.trim() || null,
+        razorpay_webhook_secret: razorpayWebhookSecret.trim() || null,
+        razorpay_pass_fee_to_client: razorpayPassFee,
+      })
+      setRazorpayStatus(razorpayKeyId.trim() && razorpayKeySecret.trim() ? "connected" : null)
+      toast({ title: "Razorpay settings saved" })
+    } catch (err) {
+      toast({ title: String(err), variant: "destructive" })
+    } finally {
+      setRazorpaySaving(false)
     }
   }
 
@@ -405,6 +444,107 @@ export function IntegrationsTab({
             >
               {resendTesting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Send test email
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      {/* Razorpay card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="24" height="24" rx="6" fill="#072654"/>
+                <path d="M6 17L10.5 7H14L16 12H12.5L14.5 17H11L9.5 13H8.5L7 17H6Z" fill="#3395FF"/>
+              </svg>
+              <CardTitle className="text-base font-semibold">Razorpay</CardTitle>
+            </div>
+            <StatusBadge status={razorpayStatus} />
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Accept online payments from clients via Razorpay payment links. Create a Razorpay
+            account, generate API keys, and paste them below.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Key ID</Label>
+              <Input
+                placeholder="rzp_live_..."
+                value={razorpayKeyId}
+                onChange={(e) => setRazorpayKeyId(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Key Secret</Label>
+              <div className="relative">
+                <Input
+                  type={showRazorpaySecret ? "text" : "password"}
+                  placeholder="••••••••••••••••"
+                  value={razorpayKeySecret}
+                  onChange={(e) => setRazorpayKeySecret(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowRazorpaySecret((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showRazorpaySecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Webhook Secret</Label>
+            <div className="relative">
+              <Input
+                type={showRazorpayWebhookSecret ? "text" : "password"}
+                placeholder="••••••••••••••••"
+                value={razorpayWebhookSecret}
+                onChange={(e) => setRazorpayWebhookSecret(e.target.value)}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowRazorpayWebhookSecret((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showRazorpayWebhookSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Find in Razorpay Dashboard → Webhooks. Required for payment auto-reconciliation.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-3 py-2">
+            <Switch
+              id="razorpay-pass-fee"
+              checked={razorpayPassFee}
+              onCheckedChange={setRazorpayPassFee}
+            />
+            <div className="flex flex-col gap-0.5">
+              <label htmlFor="razorpay-pass-fee" className="text-sm font-medium cursor-pointer">
+                Pass Razorpay fee to client
+              </label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, a 2% processing fee is added to the payment link amount.
+                The stored invoice total is unchanged.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              onClick={saveRazorpay}
+              disabled={razorpaySaving}
+              className="bg-[#1a1a2e] hover:bg-[#2d2d4e] text-white"
+            >
+              {razorpaySaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Save
             </Button>
           </div>
         </CardContent>

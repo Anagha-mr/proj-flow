@@ -14,7 +14,9 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/vendor/") ||
     pathname.startsWith("/share/moodboard/") ||
     pathname.startsWith("/api/canva/callback") ||
-    pathname.startsWith("/api/moodboards/approve")
+    pathname.startsWith("/api/moodboards/approve") ||
+    pathname.startsWith("/api/stage-payment/confirm") ||
+    pathname.startsWith("/api/razorpay/webhook")
   ) {
     return NextResponse.next()
   }

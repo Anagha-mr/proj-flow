@@ -26,7 +26,7 @@ async function getWatiCredentials(studioId: string): Promise<{ url: string; key:
   return null
 }
 
-async function sendWhatsAppMessage(params: {
+export async function sendWhatsAppMessage(params: {
   to: string
   templateName: string
   variables: Record<string, string>
@@ -981,6 +981,16 @@ export async function notifyProjectHealthAlert(
   signals: import('./dashboard').HealthSignals
 ): Promise<void> {
   console.log('NOTIFY: project health alert', projectId, signals.overall)
+}
+
+// ─── Sprint 17: Payment automation stubs ─────────────────────────────────────
+
+export async function sendPaymentReceivedNotification(invoiceId: string, amount: number): Promise<void> {
+  console.log('NOTIFY: payment received', invoiceId, amount)
+}
+
+export async function notifyStagePaymentConfirmed(stagePaymentId: string): Promise<void> {
+  console.log('NOTIFY: stage payment confirmed', stagePaymentId)
 }
 
 export async function notifyStagePaymentReleased(paymentId: string): Promise<void> {

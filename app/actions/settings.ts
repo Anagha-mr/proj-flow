@@ -9,20 +9,29 @@ export async function updateStudioIntegrations(payload: {
   resend_api_key?: string | null
   sending_email?: string | null
   sending_email_name?: string | null
+  razorpay_key_id?: string | null
+  razorpay_key_secret?: string | null
+  razorpay_webhook_secret?: string | null
+  razorpay_pass_fee_to_client?: boolean
 }): Promise<void> {
   const { supabase, studioId, role } = await getAuthContext()
 
   if (role !== "owner") throw new Error("Only owners can update integrations")
 
-  const { error } = await supabase
-    .from("studios")
-    .update({
-      wati_api_url: payload.wati_api_url ?? null,
-      wati_api_key: payload.wati_api_key ?? null,
-      resend_api_key: payload.resend_api_key ?? null,
-      sending_email: payload.sending_email ?? null,
-      sending_email_name: payload.sending_email_name ?? null,
-    })
+  const update: Record<string, unknown> = {}
+  if (payload.wati_api_url !== undefined) update.wati_api_url = payload.wati_api_url
+  if (payload.wati_api_key !== undefined) update.wati_api_key = payload.wati_api_key
+  if (payload.resend_api_key !== undefined) update.resend_api_key = payload.resend_api_key
+  if (payload.sending_email !== undefined) update.sending_email = payload.sending_email
+  if (payload.sending_email_name !== undefined) update.sending_email_name = payload.sending_email_name
+  if (payload.razorpay_key_id !== undefined) update.razorpay_key_id = payload.razorpay_key_id
+  if (payload.razorpay_key_secret !== undefined) update.razorpay_key_secret = payload.razorpay_key_secret
+  if (payload.razorpay_webhook_secret !== undefined) update.razorpay_webhook_secret = payload.razorpay_webhook_secret
+  if (payload.razorpay_pass_fee_to_client !== undefined) update.razorpay_pass_fee_to_client = payload.razorpay_pass_fee_to_client
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from as any)("studios")
+    .update(update)
     .eq("id", studioId)
 
   if (error) throw new Error(error.message)
