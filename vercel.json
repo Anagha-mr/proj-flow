@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/health-scores",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/cron/morning-alerts",
@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/payment-reminders",
-      "schedule": "30 3 * * *"
+      "schedule": "0 3 * * *"
     }
   ]
 }
