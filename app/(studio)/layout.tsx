@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { TopBar } from "@/components/layout/top-bar"
 import { CommandPalette } from "@/components/layout/command-palette"
 import { OnboardingModal } from "@/components/dashboard/onboarding-modal"
+import { AIShell } from "@/components/ai/ai-shell"
 
 export default async function StudioLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -14,7 +15,7 @@ export default async function StudioLayout({ children }: { children: React.React
 
   const { data } = await supabase
     .from("users")
-    .select("studio_id, studio:studios(id, name, onboarding_complete)")
+    .select("studio_id, studio:studios(id, name, onboarding_complete, ai_enabled)")
     .eq("id", user.id)
     .single()
 
@@ -22,9 +23,10 @@ export default async function StudioLayout({ children }: { children: React.React
 
   if (!studioId) redirect("/onboarding")
 
-  const studio = data?.studio as { id: string; name: string; onboarding_complete: boolean } | null
+  const studio = data?.studio as { id: string; name: string; onboarding_complete: boolean; ai_enabled: boolean } | null
   const studioName = studio?.name ?? ""
   const showOnboarding = studio?.onboarding_complete === false
+  const aiEnabled = studio?.ai_enabled !== false
 
   return (
     <SidebarProvider>
@@ -54,6 +56,9 @@ export default async function StudioLayout({ children }: { children: React.React
       {showOnboarding && (
         <OnboardingModal studioId={studioId} studioName={studioName} />
       )}
+
+      {/* AI Assistant — overlays all content */}
+      <AIShell aiEnabled={aiEnabled} />
     </SidebarProvider>
   )
 }

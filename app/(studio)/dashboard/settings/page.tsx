@@ -22,7 +22,7 @@ export default async function SettingsPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: studio } = await (supabase.from as any)("studios")
-    .select("plan_tier, whatsapp_number, wati_api_url, wati_api_key, resend_api_key, sending_email, sending_email_name, po_approval_threshold, razorpay_key_id, razorpay_key_secret, razorpay_webhook_secret, razorpay_pass_fee_to_client")
+    .select("plan_tier, whatsapp_number, wati_api_url, wati_api_key, resend_api_key, sending_email, sending_email_name, po_approval_threshold, razorpay_key_id, razorpay_key_secret, razorpay_webhook_secret, razorpay_pass_fee_to_client, ai_enabled")
     .eq("id", studioId)
     .single()
 
@@ -73,6 +73,7 @@ export default async function SettingsPage() {
             initialRazorpayKeySecret={studio?.razorpay_key_secret ?? null}
             initialRazorpayWebhookSecret={studio?.razorpay_webhook_secret ?? null}
             initialRazorpayPassFee={studio?.razorpay_pass_fee_to_client ?? false}
+            initialAiEnabled={studio?.ai_enabled !== false}
           />
         </section>
       )}

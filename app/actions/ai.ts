@@ -3,6 +3,7 @@
 import { getAuthContext } from "./_auth"
 import { revalidatePath } from "next/cache"
 import { buildSystemPrompt } from "@/lib/utils/ai-prompt"
+import type { Json } from "@/lib/supabase/types"
 import { createTask } from "./tasks"
 import { updateTask } from "./tasks"
 import { createMeeting } from "./meetings"
@@ -60,7 +61,6 @@ export interface ProjectContext {
     status: string
     client_name: string
     contract_value: number | null
-    health_score: string
   }
   overdue_tasks: Array<{ id: string; title: string; due_date: string; assigned_to: string | null }>
   pending_rfis: Array<{ id: string; title: string; days_open: number }>
@@ -71,9 +71,6 @@ export interface ProjectContext {
 }
 
 // ─── getProjectContext ────────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyQuery = any
 
 export async function getProjectContext(projectId: string): Promise<ProjectContext> {
   const { supabase, studioId } = await getAuthContext()
@@ -87,14 +84,13 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
     siteUpdatesResult,
     teamResult,
   ] = await Promise.all([
-    // Project (uses any cast for health_score which was added in sprint 16 migration)
-    (supabase.from as AnyQuery)("projects")
-      .select("id, name, status, client_id, contract_value, health_score")
+    supabase
+      .from("projects")
+      .select("id, name, status, client_id, contract_value")
       .eq("id", projectId)
       .eq("studio_id", studioId)
       .single(),
 
-    // Overdue tasks
     supabase
       .from("tasks")
       .select("id, title, due_date")
@@ -105,7 +101,6 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
       .order("due_date", { ascending: true })
       .limit(20),
 
-    // Pending RFIs
     supabase
       .from("rfis")
       .select("id, title, created_at")
@@ -115,14 +110,13 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
       .order("created_at", { ascending: true })
       .limit(10),
 
-    // Pending procurement items via item status
-    (supabase.from as AnyQuery)("procurement_item_status")
+    supabase
+      .from("procurement_item_status")
       .select("id, item_id, client_approval_status")
       .eq("studio_id", studioId)
       .eq("client_approval_status", "pending")
       .limit(20),
 
-    // Outstanding invoices (column is "total" per types)
     supabase
       .from("invoices")
       .select("id, invoice_number, total, due_date, status")
@@ -132,7 +126,6 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
       .order("due_date", { ascending: true })
       .limit(10),
 
-    // Recent site updates (column is "status_note" per types)
     supabase
       .from("site_updates")
       .select("id, status_note, submitted_at")
@@ -141,7 +134,6 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
       .order("submitted_at", { ascending: false })
       .limit(5),
 
-    // Team members
     supabase
       .from("users")
       .select("id, name, role")
@@ -165,7 +157,7 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
 
   // Fetch assignees for overdue tasks
   const overdueTasks = overdueTasksResult.data ?? []
-  const overdueTaskIds = overdueTasks.map((t: { id: string }) => t.id)
+  const overdueTaskIds = overdueTasks.map((t) => t.id)
   const assigneeMap = new Map<string, string>()
   if (overdueTaskIds.length > 0) {
     const { data: assignees } = await supabase
@@ -183,16 +175,15 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
 
   // Fetch procurement item details
   const procItems = procurementResult.data ?? []
-  const itemIds = procItems.map((p: { item_id: string }) => p.item_id).filter(Boolean)
+  const itemIds = procItems.map((p) => p.item_id).filter(Boolean)
   const procDetailMap = new Map<string, { item_name: string; schedule_name: string }>()
   if (itemIds.length > 0) {
-    // column is "name" in procurement_items types
     const { data: procDetails } = await supabase
       .from("procurement_items")
       .select("id, name, schedule_id")
       .in("id", itemIds)
       .eq("studio_id", studioId)
-    const scheduleIds = (procDetails ?? []).map((d: { schedule_id: string }) => d.schedule_id).filter(Boolean)
+    const scheduleIds = (procDetails ?? []).map((d) => d.schedule_id).filter(Boolean)
     const scheduleNameMap = new Map<string, string>()
     if (scheduleIds.length > 0) {
       const { data: schedules } = await supabase
@@ -200,10 +191,9 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
         .select("id, name")
         .in("id", scheduleIds)
         .eq("studio_id", studioId)
-      schedules?.forEach((s: { id: string; name: string }) => scheduleNameMap.set(s.id, s.name))
+      schedules?.forEach((s) => scheduleNameMap.set(s.id, s.name))
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    procDetails?.forEach((d: any) => {
+    procDetails?.forEach((d) => {
       procDetailMap.set(d.id, { item_name: d.name, schedule_name: scheduleNameMap.get(d.schedule_id) ?? "" })
     })
   }
@@ -217,26 +207,25 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
       status: project.status ?? "active",
       client_name: clientName,
       contract_value: project.contract_value ?? null,
-      health_score: project.health_score ?? "green",
     },
-    overdue_tasks: overdueTasks.map((t: { id: string; title: string; due_date: string | null }) => ({
+    overdue_tasks: overdueTasks.map((t) => ({
       id: t.id,
       title: t.title,
       due_date: t.due_date ?? "",
       assigned_to: assigneeMap.get(t.id) ?? null,
     })),
-    pending_rfis: (rfisResult.data ?? []).map((r: { id: string; title: string; created_at: string }) => ({
+    pending_rfis: (rfisResult.data ?? []).map((r) => ({
       id: r.id,
       title: r.title,
       days_open: Math.floor((now - new Date(r.created_at).getTime()) / 86400000),
     })),
-    pending_procurement: procItems.map((p: { id: string; item_id: string; client_approval_status: string }) => ({
+    pending_procurement: procItems.map((p) => ({
       id: p.id,
       item_name: procDetailMap.get(p.item_id)?.item_name ?? "Unknown item",
       schedule_name: procDetailMap.get(p.item_id)?.schedule_name ?? "",
       status: p.client_approval_status,
     })),
-    outstanding_invoices: (invoicesResult.data ?? []).map((inv: { id: string; invoice_number: string; total: number; due_date: string | null; status: string }) => ({
+    outstanding_invoices: (invoicesResult.data ?? []).map((inv) => ({
       id: inv.id,
       invoice_number: inv.invoice_number,
       total: inv.total,
@@ -244,12 +233,12 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
         ? Math.max(0, Math.floor((now - new Date(inv.due_date).getTime()) / 86400000))
         : 0,
     })),
-    recent_site_updates: (siteUpdatesResult.data ?? []).map((u: { id: string; status_note: string | null; submitted_at: string }) => ({
+    recent_site_updates: (siteUpdatesResult.data ?? []).map((u) => ({
       id: u.id,
       note: u.status_note ?? "",
       submitted_at: u.submitted_at,
     })),
-    team_members: (teamResult.data ?? []).map((u: { id: string; name: string; role: string }) => ({
+    team_members: (teamResult.data ?? []).map((u) => ({
       id: u.id,
       name: u.name,
       role: u.role,
@@ -261,44 +250,45 @@ export async function getProjectContext(projectId: string): Promise<ProjectConte
 
 export async function getOrCreateConversation(projectId: string | null): Promise<string> {
   const { supabase, userId, studioId } = await getAuthContext()
-  // ai_conversations is not in types yet — cast as any
-  const from = supabase.from as AnyQuery
 
-  const baseQuery = from("ai_conversations")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("studio_id", studioId)
+  const baseQuery = supabase
+    .from('ai_conversations')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('studio_id', studioId)
 
-  const { data: existing } = await (projectId
-    ? baseQuery.eq("project_id", projectId).maybeSingle()
-    : baseQuery.is("project_id", null).maybeSingle())
+  const { data } = await (projectId
+    ? baseQuery.eq('project_id', projectId)
+    : baseQuery.is('project_id', null)
+  ).maybeSingle()
 
-  if (existing?.id) return existing.id
+  if (data?.id) return data.id
 
-  const { data: created, error } = await from("ai_conversations")
+  const { data: newConvo, error } = await supabase
+    .from('ai_conversations')
     .insert({ studio_id: studioId, user_id: userId, project_id: projectId ?? null, messages: [] })
-    .select("id")
+    .select('id')
     .single()
 
   if (error) throw new Error(error.message)
-  return created.id
+  return newConvo.id
 }
 
 // ─── getConversationHistory ───────────────────────────────────────────────────
 
 export async function getConversationHistory(conversationId: string): Promise<AIMessage[]> {
   const { supabase, studioId } = await getAuthContext()
-  const from = supabase.from as AnyQuery
 
-  const { data, error } = await from("ai_conversations")
-    .select("messages, studio_id")
-    .eq("id", conversationId)
+  const { data, error } = await supabase
+    .from('ai_conversations')
+    .select('messages, studio_id')
+    .eq('id', conversationId)
     .single()
 
   if (error || !data) return []
   if (data.studio_id !== studioId) throw new Error("Forbidden")
 
-  return (data.messages ?? []) as AIMessage[]
+  return (data.messages ?? []) as unknown as AIMessage[]
 }
 
 // ─── sendMessage ──────────────────────────────────────────────────────────────
@@ -309,17 +299,15 @@ export async function sendMessage(input: {
   userMessage: string
 }): Promise<AIMessage> {
   const { supabase, studioId, userId } = await getAuthContext()
-  const from = supabase.from as AnyQuery
 
-  // Verify conversation belongs to auth studio
-  const { data: conv } = await from("ai_conversations")
-    .select("messages, studio_id")
-    .eq("id", input.conversationId)
+  const { data: conv } = await supabase
+    .from('ai_conversations')
+    .select('messages, studio_id')
+    .eq('id', input.conversationId)
     .single()
 
   if (!conv || conv.studio_id !== studioId) throw new Error("Forbidden")
 
-  // Fetch studio name + user name + project context in parallel
   const [studioResult, userResult, context] = await Promise.all([
     supabase.from("studios").select("name").eq("id", studioId).single(),
     supabase.from("users").select("name").eq("id", userId).single(),
@@ -330,8 +318,7 @@ export async function sendMessage(input: {
   const userName = userResult.data?.name ?? "Team Member"
   const systemPrompt = buildSystemPrompt(context, studioName, userName)
 
-  // Build messages for Claude (last 20 max)
-  const history = ((conv.messages ?? []) as AIMessage[]).slice(-20)
+  const history = ((conv.messages ?? []) as unknown as AIMessage[]).slice(-20)
   const claudeMessages = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
     { role: "user" as const, content: input.userMessage },
@@ -360,7 +347,6 @@ export async function sendMessage(input: {
   const data = await response.json()
   const rawText: string = data.content?.[0]?.text ?? ""
 
-  // Parse action proposal from <action>...</action> tags
   const actionMatch = rawText.match(/<action>([\s\S]*?)<\/action>/)
   let actionProposal: ActionProposal | undefined
   let visibleContent = rawText
@@ -384,11 +370,11 @@ export async function sendMessage(input: {
     ...(actionProposal ? { action_proposal: actionProposal } : {}),
   }
 
-  // Persist both messages
-  const updatedMessages = [...((conv.messages ?? []) as AIMessage[]), userMsg, assistantMsg]
-  await from("ai_conversations")
-    .update({ messages: updatedMessages })
-    .eq("id", input.conversationId)
+  const updatedMessages = [...((conv.messages ?? []) as unknown as AIMessage[]), userMsg, assistantMsg]
+  await supabase
+    .from('ai_conversations')
+    .update({ messages: updatedMessages as unknown as Json })
+    .eq('id', input.conversationId)
 
   return assistantMsg
 }
@@ -401,30 +387,46 @@ export async function confirmAction(
   action: ActionProposal
 ): Promise<void> {
   const { supabase, studioId } = await getAuthContext()
-  const from = supabase.from as AnyQuery
 
-  const { data: conv } = await from("ai_conversations")
-    .select("messages, studio_id, project_id")
-    .eq("id", conversationId)
+  // Fetch conversation — project_id is the authoritative source, never the AI payload
+  const { data: convo } = await supabase
+    .from('ai_conversations')
+    .select('messages, studio_id, project_id')
+    .eq('id', conversationId)
+    .eq('studio_id', studioId)
     .single()
 
-  if (!conv || conv.studio_id !== studioId) throw new Error("Forbidden")
+  if (!convo) throw new Error('Conversation not found')
 
-  // Execute the action
+  const projectId = convo.project_id
+
+  console.log('Action payload received:', JSON.stringify(action.payload))
+
   switch (action.type) {
-    case "create_task": {
-      const p = action.payload as CreateTaskPayload
+    case 'create_task': {
+      const p = action.payload as Record<string, unknown>
+
+      // Llama may use different key names — handle all variants
+      const title = (p.title || p.task_title || p.name || p.task_name) as string | undefined
+
+      if (!title?.trim()) {
+        throw new Error("Task title is missing from the AI response. Please try again.")
+      }
+      if (!projectId) {
+        throw new Error("Cannot create a task without a project.")
+      }
+
       await createTask({
-        project_id: p.project_id,
-        title: p.title,
-        description: p.description ?? undefined,
-        priority: p.priority,
-        due_date: p.due_date ?? undefined,
+        project_id: projectId,
+        title: title.trim(),
+        due_date: (p.due_date || p.dueDate || null) as string | null,
+        priority: (p.priority || 'medium') as string,
+        description: (p.description || null) as string | null,
       })
-      revalidatePath(`/dashboard/projects/${p.project_id}/tasks`)
+      revalidatePath(`/dashboard/projects/${projectId}/tasks`)
       break
     }
-    case "send_whatsapp": {
+    case 'send_whatsapp': {
       const p = action.payload as SendWhatsAppPayload
       await sendWhatsAppMessage({
         to: p.recipient_phone,
@@ -432,21 +434,22 @@ export async function confirmAction(
         variables: { message: p.message_text },
         studioId,
         recipientType: "client",
-        recipientId: p.project_id,
-        projectId: p.project_id,
+        recipientId: projectId ?? p.project_id,
+        projectId: projectId ?? p.project_id,
       })
       break
     }
-    case "update_task_status": {
+    case 'update_task_status': {
       const p = action.payload as UpdateTaskStatusPayload
       await updateTask(p.task_id, { status: p.new_status })
-      if (conv.project_id) revalidatePath(`/dashboard/projects/${conv.project_id}/tasks`)
+      if (projectId) revalidatePath(`/dashboard/projects/${projectId}/tasks`)
       break
     }
-    case "create_meeting_note": {
+    case 'create_meeting_note': {
       const p = action.payload as CreateMeetingNotePayload
+      const meetingProjectId = projectId ?? p.project_id
       await createMeeting({
-        projectId: p.project_id,
+        projectId: meetingProjectId,
         title: p.title,
         meetingType: "other",
         meetingDate: new Date().toISOString().split("T")[0],
@@ -457,13 +460,12 @@ export async function confirmAction(
           role: "",
         })),
       })
-      revalidatePath(`/dashboard/projects/${p.project_id}/meetings`)
+      revalidatePath(`/dashboard/projects/${meetingProjectId}/meetings`)
       break
     }
   }
 
-  // Update status in messages JSONB
-  const messages = (conv.messages ?? []) as AIMessage[]
+  const messages = (convo.messages ?? []) as unknown as AIMessage[]
   const updated = messages.map((m) => {
     if (m.timestamp === messageTimestamp && m.action_proposal) {
       return { ...m, action_proposal: { ...m.action_proposal, status: "confirmed" as const } }
@@ -471,25 +473,26 @@ export async function confirmAction(
     return m
   })
 
-  await from("ai_conversations")
-    .update({ messages: updated })
-    .eq("id", conversationId)
+  await supabase
+    .from('ai_conversations')
+    .update({ messages: updated as unknown as Json })
+    .eq('id', conversationId)
 }
 
 // ─── dismissAction ────────────────────────────────────────────────────────────
 
 export async function dismissAction(conversationId: string, messageTimestamp: string): Promise<void> {
   const { supabase, studioId } = await getAuthContext()
-  const from = supabase.from as AnyQuery
 
-  const { data: conv } = await from("ai_conversations")
-    .select("messages, studio_id")
-    .eq("id", conversationId)
+  const { data: conv } = await supabase
+    .from('ai_conversations')
+    .select('messages, studio_id')
+    .eq('id', conversationId)
     .single()
 
   if (!conv || conv.studio_id !== studioId) throw new Error("Forbidden")
 
-  const messages = (conv.messages ?? []) as AIMessage[]
+  const messages = (conv.messages ?? []) as unknown as AIMessage[]
   const updated = messages.map((m) => {
     if (m.timestamp === messageTimestamp && m.action_proposal) {
       return { ...m, action_proposal: { ...m.action_proposal, status: "dismissed" as const } }
@@ -497,25 +500,27 @@ export async function dismissAction(conversationId: string, messageTimestamp: st
     return m
   })
 
-  await from("ai_conversations")
-    .update({ messages: updated })
-    .eq("id", conversationId)
+  await supabase
+    .from('ai_conversations')
+    .update({ messages: updated as unknown as Json })
+    .eq('id', conversationId)
 }
 
 // ─── clearConversation ────────────────────────────────────────────────────────
 
 export async function clearConversation(conversationId: string): Promise<void> {
   const { supabase, studioId } = await getAuthContext()
-  const from = supabase.from as AnyQuery
 
-  const { data: conv } = await from("ai_conversations")
-    .select("studio_id")
-    .eq("id", conversationId)
+  const { data: conv } = await supabase
+    .from('ai_conversations')
+    .select('studio_id')
+    .eq('id', conversationId)
     .single()
 
   if (!conv || conv.studio_id !== studioId) throw new Error("Forbidden")
 
-  await from("ai_conversations")
+  await supabase
+    .from('ai_conversations')
     .update({ messages: [] })
-    .eq("id", conversationId)
+    .eq('id', conversationId)
 }

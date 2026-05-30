@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react"
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, AlertTriangle, Sparkles } from "lucide-react"
 import { updateStudioIntegrations, testWatiConnection, testResendEmail } from "@/app/actions/settings"
 import { disconnectCanva } from "@/app/actions/canva"
 import type { CanvaConnectionStatus } from "@/app/actions/canva"
@@ -26,6 +26,7 @@ interface IntegrationsTabProps {
   initialRazorpayKeySecret?: string | null
   initialRazorpayWebhookSecret?: string | null
   initialRazorpayPassFee?: boolean
+  initialAiEnabled?: boolean
 }
 
 export function IntegrationsTab({
@@ -40,6 +41,7 @@ export function IntegrationsTab({
   initialRazorpayKeySecret,
   initialRazorpayWebhookSecret,
   initialRazorpayPassFee = false,
+  initialAiEnabled = true,
 }: IntegrationsTabProps) {
   const { toast } = useToast()
   const searchParams = useSearchParams()
@@ -125,6 +127,24 @@ export function IntegrationsTab({
   const [resendStatus, setResendStatus] = useState<"connected" | "failed" | null>(
     initialResendKey && initialSendingEmail ? "connected" : null
   )
+
+  // AI state
+  const [aiEnabled, setAiEnabled] = useState(initialAiEnabled)
+  const [aiSaving, setAiSaving] = useState(false)
+
+  async function handleAiToggle(enabled: boolean) {
+    setAiEnabled(enabled)
+    setAiSaving(true)
+    try {
+      await updateStudioIntegrations({ ai_enabled: enabled })
+      toast({ title: enabled ? "AI Assistant enabled" : "AI Assistant disabled" })
+    } catch (err) {
+      toast({ title: String(err), variant: "destructive" })
+      setAiEnabled(!enabled) // revert on error
+    } finally {
+      setAiSaving(false)
+    }
+  }
 
   // Razorpay state
   const [razorpayKeyId, setRazorpayKeyId] = useState(initialRazorpayKeyId ?? "")
@@ -238,6 +258,31 @@ export function IntegrationsTab({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* AI Assistant card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-accent" />
+              <CardTitle className="text-base font-semibold">AI Assistant</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              {aiSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+              <Switch
+                id="ai-enabled"
+                checked={aiEnabled}
+                onCheckedChange={handleAiToggle}
+                disabled={aiSaving}
+              />
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Context-aware project assistant powered by Claude. Answers questions about your
+            projects and drafts messages for review.
+          </p>
+        </CardHeader>
+      </Card>
+
       {/* Canva card */}
       <Card>
         <CardHeader className="pb-3">

@@ -13,6 +13,7 @@ export async function updateStudioIntegrations(payload: {
   razorpay_key_secret?: string | null
   razorpay_webhook_secret?: string | null
   razorpay_pass_fee_to_client?: boolean
+  ai_enabled?: boolean
 }): Promise<void> {
   const { supabase, studioId, role } = await getAuthContext()
 
@@ -28,6 +29,7 @@ export async function updateStudioIntegrations(payload: {
   if (payload.razorpay_key_secret !== undefined) update.razorpay_key_secret = payload.razorpay_key_secret
   if (payload.razorpay_webhook_secret !== undefined) update.razorpay_webhook_secret = payload.razorpay_webhook_secret
   if (payload.razorpay_pass_fee_to_client !== undefined) update.razorpay_pass_fee_to_client = payload.razorpay_pass_fee_to_client
+  if (payload.ai_enabled !== undefined) update.ai_enabled = payload.ai_enabled
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase.from as any)("studios")

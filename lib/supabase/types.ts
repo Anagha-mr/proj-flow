@@ -1505,6 +1505,53 @@ export interface Database {
         }
         Relationships: []
       }
+      ai_conversations: {
+        Row: {
+          id: string
+          studio_id: string
+          user_id: string
+          project_id: string | null
+          messages: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          studio_id: string
+          user_id: string
+          project_id?: string | null
+          messages?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          messages?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_studio_id_fkey"
+            columns: ["studio_id"]
+            isOneToOne: false
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
