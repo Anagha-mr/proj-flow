@@ -511,6 +511,28 @@ export async function createClient(data: {
   return client
 }
 
+// ─── updateProjectNarrativeSettings ──────────────────────────
+export async function updateProjectNarrativeSettings(
+  projectId: string,
+  settings: { frequency: string; language: string }
+): Promise<void> {
+  const { supabase, studioId, role } = await getAuthContext()
+
+  if (role !== 'owner' && role !== 'senior_designer') {
+    throw new Error('Insufficient permissions')
+  }
+
+  const { error } = await supabase
+    .from('projects')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update({ narrative_frequency: settings.frequency, narrative_language: settings.language } as any)
+    .eq('id', projectId)
+    .eq('studio_id', studioId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath(`/dashboard/projects/${projectId}/overview`)
+}
+
 // ─── updateClient ─────────────────────────────────────────────
 export async function updateClient(
   clientId: string,

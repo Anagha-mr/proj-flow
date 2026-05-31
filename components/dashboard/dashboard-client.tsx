@@ -7,11 +7,13 @@ import { MetricCards } from "./metric-cards"
 import { ProjectCardsStrip } from "./project-cards-strip"
 import { ActivityFeed } from "./activity-feed"
 import { MyTasksWidget } from "./my-tasks-widget"
+import { NarrativesDashboardSection } from "@/components/narratives/narratives-dashboard-section"
 import type {
   DashboardMetrics,
   DashboardProjectCard,
   ActivityFeedItem,
 } from "@/app/actions/dashboard"
+import type { WeeklyNarrative } from "@/app/actions/narratives"
 
 interface DashboardClientProps {
   firstName: string
@@ -20,6 +22,7 @@ interface DashboardClientProps {
   projectCards: DashboardProjectCard[]
   activityFeed: ActivityFeedItem[]
   leaveAlertCount: number
+  pendingNarratives: WeeklyNarrative[]
 }
 
 const ROLE_BADGE: Record<string, { label: string; bg: string; color: string }> = {
@@ -45,6 +48,7 @@ export function DashboardClient({
   projectCards,
   activityFeed,
   leaveAlertCount,
+  pendingNarratives,
 }: DashboardClientProps) {
   const showFinancials = usePermission('view_financials')
   const isDesignerOrIntern = role === 'designer' || role === 'intern'
@@ -92,6 +96,12 @@ export function DashboardClient({
         <h2 className="text-sm font-semibold text-foreground mb-3">Active Projects</h2>
         <ProjectCardsStrip cards={projectCards} />
       </section>
+
+      {/* Weekly Client Updates — only shown on Mondays or when drafts exist */}
+      <NarrativesDashboardSection
+        initialNarratives={pendingNarratives}
+        userRole={role}
+      />
 
       {/* Activity & Alerts feed */}
       <ActivityFeed items={visibleFeed} leaveAlertCount={leaveAlertCount} />

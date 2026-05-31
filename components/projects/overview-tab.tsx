@@ -20,7 +20,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar } from "lucide-react"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
-import { updateProject, updateProjectContractValue } from "@/app/actions/projects"
+import { updateProject, updateProjectContractValue, updateProjectNarrativeSettings } from "@/app/actions/projects"
 import { getProjectFinanceSummary } from "@/app/actions/finance"
 import { useToast } from "@/hooks/use-toast"
 
@@ -48,6 +48,8 @@ type Project = {
   postcode: string | null
   updated_at: string
   contract_value?: number | null
+  narrative_frequency?: string | null
+  narrative_language?: string | null
   client: { id: string; name: string; email: string | null; phone_primary: string | null; whatsapp_number: string | null } | null
   members: Array<{
     id: string
@@ -402,7 +404,7 @@ export function OverviewTab({
           <SheetHeader>
             <SheetTitle>Edit Project</SheetTitle>
           </SheetHeader>
-          <EditProjectForm project={localProject} onSave={saveEdit} saving={saving} />
+          <EditProjectForm project={localProject} onSave={saveEdit} saving={saving} userRole={userRole} />
         </SheetContent>
       </Sheet>
     </div>
@@ -413,15 +415,35 @@ function EditProjectForm({
   project,
   onSave,
   saving,
+  userRole,
 }: {
   project: Project
   onSave: (field: string, value: string) => void
   saving: boolean
+  userRole: string
 }) {
+  const { toast } = useToast()
   const [name, setName] = useState(project.name)
   const [scopeDesc, setScopeDesc] = useState(project.scope_description ?? "")
   const [status, setStatus] = useState(project.status)
   const [pinterestUrl, setPinterestUrl] = useState(project.pinterest_url ?? "")
+  const [narrativeFrequency, setNarrativeFrequency] = useState(project.narrative_frequency ?? "weekly")
+  const [narrativeLanguage, setNarrativeLanguage] = useState(project.narrative_language ?? "en")
+  const [savingNarrative, setSavingNarrative] = useState(false)
+
+  const canEditNarrative = userRole === "owner" || userRole === "senior_designer"
+
+  async function saveNarrativeSettings(frequency: string, language: string) {
+    setSavingNarrative(true)
+    try {
+      await updateProjectNarrativeSettings(project.id, { frequency, language })
+      toast({ title: "Client update settings saved" })
+    } catch {
+      toast({ title: "Failed to save settings", variant: "destructive" })
+    } finally {
+      setSavingNarrative(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5 mt-6">
@@ -471,6 +493,55 @@ function EditProjectForm({
           className="focus-visible:ring-[#e94560]"
         />
       </div>
+
+      {/* Client Updates settings — owner/senior_designer only */}
+      {canEditNarrative && (
+        <div className="border border-border rounded-[8px] p-4 flex flex-col gap-3">
+          <p className="text-sm font-medium">Client Updates</p>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Frequency</label>
+            <Select
+              value={narrativeFrequency}
+              onValueChange={(v) => {
+                setNarrativeFrequency(v)
+                saveNarrativeSettings(v, narrativeLanguage)
+              }}
+            >
+              <SelectTrigger className="focus:ring-[#e94560]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="biweekly">Bi-weekly</SelectItem>
+                <SelectItem value="paused">Paused</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Language</label>
+            <Select
+              value={narrativeLanguage}
+              onValueChange={(v) => {
+                setNarrativeLanguage(v)
+                saveNarrativeSettings(narrativeFrequency, v)
+              }}
+            >
+              <SelectTrigger className="focus:ring-[#e94560]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="hi">Hindi</SelectItem>
+                <SelectItem value="kn">Kannada</SelectItem>
+                <SelectItem value="ta">Tamil</SelectItem>
+                <SelectItem value="te">Telugu</SelectItem>
+                <SelectItem value="mr">Marathi</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {savingNarrative && <p className="text-xs text-muted-foreground">Saving…</p>}
+        </div>
+      )}
 
       {saving && <p className="text-xs text-muted-foreground">Saving…</p>}
     </div>
