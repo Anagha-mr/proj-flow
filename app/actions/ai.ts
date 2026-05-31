@@ -404,7 +404,7 @@ export async function confirmAction(
 
   switch (action.type) {
     case 'create_task': {
-      const p = action.payload as Record<string, unknown>
+      const p = action.payload as unknown as Record<string, unknown>
 
       // Llama may use different key names — handle all variants
       const title = (p.title || p.task_title || p.name || p.task_name) as string | undefined
