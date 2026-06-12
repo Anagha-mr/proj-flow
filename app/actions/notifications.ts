@@ -636,6 +636,24 @@ export async function notifyMeetingNotesShared(meetingId: string, recipientPhone
   console.log('WHATSAPP STUB: meeting notes shared', meetingId, recipientPhones)
 }
 
+export async function notifyResourceConflict(
+  studioId: string,
+  conflict: {
+    user_id: string
+    user_name: string
+    conflict_date: string
+    pf_event_title: string
+    pf_event_type: 'meeting' | 'site_visit' | 'task_due_date'
+    busy_block_start: string
+    busy_block_end: string
+  }
+): Promise<void> {
+  // Stub — future: send WhatsApp to studio owner
+  console.log(
+    `notifyResourceConflict: studio=${studioId} user=${conflict.user_name} date=${conflict.conflict_date} event="${conflict.pf_event_title}"`
+  )
+}
+
 export async function notifyOrderDelayed(
   studioId: string,
   projectId: string,

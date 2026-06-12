@@ -5,8 +5,9 @@ import { BillingTab } from "@/components/settings/billing-tab"
 import { IntegrationsTab } from "@/components/settings/integrations-tab"
 import { POThresholdSettings } from "@/components/settings/po-threshold-settings"
 import { GmailSettingsCard } from "@/components/gmail/gmail-settings-card"
+import { CalendarSettingsCard } from "@/components/calendar/calendar-settings-card"
 import { getCanvaConnectionStatus } from "@/app/actions/canva"
-import { getGmailConnectionStatus } from "@/app/actions/settings"
+import { getGmailConnectionStatus, getCalendarConnectionStatus } from "@/app/actions/settings"
 
 export const metadata: Metadata = { title: "Settings" }
 
@@ -30,9 +31,10 @@ export default async function SettingsPage() {
 
   const isOwner = profile?.role === "owner"
 
-  const [canvaStatus, gmailStatus] = await Promise.all([
+  const [canvaStatus, gmailStatus, calendarStatus] = await Promise.all([
     isOwner ? getCanvaConnectionStatus().catch(() => null) : Promise.resolve(null),
     isOwner ? getGmailConnectionStatus().catch(() => ({ connected: false, gmail_address: null, last_sync_at: null })) : Promise.resolve(null),
+    getCalendarConnectionStatus().catch(() => ({ connected: false, google_email: null, last_sync_at: null })),
   ])
 
   return (
@@ -89,6 +91,21 @@ export default async function SettingsPage() {
           )}
         </section>
       )}
+
+      {/* Calendar sync is per-user — visible to all roles */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-[#1a1a2e]">Calendar Sync</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Connect your Google Calendar to sync project events and see team availability.
+          </p>
+        </div>
+        <CalendarSettingsCard
+          connected={calendarStatus.connected}
+          googleEmail={calendarStatus.google_email}
+          lastSyncAt={calendarStatus.last_sync_at}
+        />
+      </section>
 
       {isOwner && (
         <section className="flex flex-col gap-4">

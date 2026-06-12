@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/gmail-sync",
       "schedule": "40 3 * * *"
+    },
+    {
+      "path": "/api/cron/calendar-sync",
+      "schedule": "45 3 * * *"
     }
   ]
 }

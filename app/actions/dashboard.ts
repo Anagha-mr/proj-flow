@@ -49,7 +49,7 @@ export interface HealthSignals {
 
 export interface ActivityFeedItem {
   id: string
-  type: 'overdue_task' | 'unanswered_rfi' | 'overdue_invoice' | 'pending_procurement' | 'new_site_update'
+  type: 'overdue_task' | 'unanswered_rfi' | 'overdue_invoice' | 'pending_procurement' | 'new_site_update' | 'resource_conflict'
   projectId: string
   projectName: string
   title: string
@@ -57,6 +57,8 @@ export interface ActivityFeedItem {
   linkHref: string
   createdAt: string
   severity: 'critical' | 'warning' | 'info'
+  // role-restricted — only returned for owner/senior_designer
+  ownerOnly?: boolean
 }
 
 // ─── getDashboardMetrics ──────────────────────────────────────────────────────

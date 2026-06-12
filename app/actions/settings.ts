@@ -113,6 +113,30 @@ export async function getGmailConnectionStatus(): Promise<{
   }
 }
 
+export async function getCalendarConnectionStatus(): Promise<{
+  connected: boolean
+  google_email: string | null
+  last_sync_at: string | null
+}> {
+  const { supabase, userId } = await getAuthContext()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase.from as any)('calendar_connections')
+    .select('google_email, last_sync_at, is_active')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (!data || !data.is_active) {
+    return { connected: false, google_email: null, last_sync_at: null }
+  }
+
+  return {
+    connected: true,
+    google_email: data.google_email ?? null,
+    last_sync_at: data.last_sync_at ?? null,
+  }
+}
+
 export async function testResendEmail(studioId: string): Promise<{ ok: boolean; message: string }> {
   const { supabase, role } = await getAuthContext()
   if (role !== "owner") throw new Error("Only owners can test integrations")

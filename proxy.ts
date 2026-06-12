@@ -19,7 +19,9 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/razorpay/webhook") ||
     pathname.startsWith("/api/rfi/contractor") ||
     pathname.startsWith("/api/gmail/auth") ||
-    pathname.startsWith("/api/gmail/callback")
+    pathname.startsWith("/api/gmail/callback") ||
+    pathname.startsWith("/api/calendar/auth") ||
+    pathname.startsWith("/api/calendar/callback")
   ) {
     return NextResponse.next()
   }

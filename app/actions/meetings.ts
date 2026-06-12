@@ -108,6 +108,12 @@ export async function createMeeting(input: {
 
   if (error) throw new Error(error.message)
   revalidatePath(`/dashboard/projects/${input.projectId}`)
+
+  // Fire-and-forget calendar push
+  import("./calendar").then(({ pushToGoogleCalendar }) =>
+    pushToGoogleCalendar("meeting", data.id).catch(() => {})
+  ).catch(() => {})
+
   return data as unknown as Meeting
 }
 
@@ -158,6 +164,12 @@ export async function updateMeeting(
 
   if (error) throw new Error(error.message)
   revalidatePath(`/dashboard/projects/${existing.project_id}`)
+
+  // Fire-and-forget calendar update
+  import("./calendar").then(({ pushToGoogleCalendar }) =>
+    pushToGoogleCalendar("meeting", meetingId).catch(() => {})
+  ).catch(() => {})
+
   return data as unknown as Meeting
 }
 
@@ -172,6 +184,12 @@ export async function deleteMeeting(meetingId: string): Promise<void> {
   if (!existing || existing.studio_id !== studioId) throw new Error("Meeting not found")
 
   await supabase.from("meetings").delete().eq("id", meetingId).eq("studio_id", studioId)
+
+  // Fire-and-forget calendar event removal
+  import("./calendar").then(({ removeFromGoogleCalendar }) =>
+    removeFromGoogleCalendar("meeting", meetingId).catch(() => {})
+  ).catch(() => {})
+
   revalidatePath(`/dashboard/projects/${existing.project_id}`)
 }
 

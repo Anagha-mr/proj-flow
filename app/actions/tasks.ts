@@ -259,7 +259,7 @@ export async function createTask(data: {
     .select("user:users(id, name, profile_photo_url)")
     .eq("task_id", task.id)
 
-  return {
+  const result = {
     ...task,
     room_tag: task.room_tag ?? null,
     progress_percent: task.progress_percent ?? 0,
@@ -270,6 +270,15 @@ export async function createTask(data: {
     subtask_count: 0,
     attachment_count: 0,
   }
+
+  // Fire-and-forget calendar push if task has a due date
+  if (data.due_date) {
+    import("./calendar").then(({ pushToGoogleCalendar }) =>
+      pushToGoogleCalendar("task_due_date", task.id).catch(() => {})
+    ).catch(() => {})
+  }
+
+  return result
 }
 
 // ─── updateTask ───────────────────────────────────────────────
@@ -328,6 +337,20 @@ export async function updateTask(
 
   if (error) throw new Error(error.message)
   revalidatePath(`/dashboard/projects/${updated.project_id}`)
+
+  // Fire-and-forget calendar sync for due date changes
+  if ('due_date' in data) {
+    if (data.due_date) {
+      import("./calendar").then(({ pushToGoogleCalendar }) =>
+        pushToGoogleCalendar("task_due_date", id).catch(() => {})
+      ).catch(() => {})
+    } else {
+      import("./calendar").then(({ removeFromGoogleCalendar }) =>
+        removeFromGoogleCalendar("task_due_date", id).catch(() => {})
+      ).catch(() => {})
+    }
+  }
+
   return updated
 }
 
@@ -345,6 +368,11 @@ export async function deleteTask(id: string) {
 
   const { error } = await supabase.from("tasks").delete().eq("id", id).eq("studio_id", studioId)
   if (error) throw new Error(error.message)
+
+  // Fire-and-forget calendar event removal
+  import("./calendar").then(({ removeFromGoogleCalendar }) =>
+    removeFromGoogleCalendar("task_due_date", id).catch(() => {})
+  ).catch(() => {})
 
   if (task?.project_id) revalidatePath(`/dashboard/projects/${task.project_id}`)
 }

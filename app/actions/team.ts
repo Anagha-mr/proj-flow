@@ -23,6 +23,7 @@ export interface TeamMember {
   role: 'owner' | 'senior_designer' | 'designer' | 'intern'
   hourly_rate: number | null
   is_active: boolean
+  calendar_connected: boolean
   created_at: string
 }
 
@@ -112,7 +113,7 @@ export async function getTeamMembers(): Promise<TeamMember[]> {
   const { supabase, studioId } = await getAuthContext()
 
   const { data, error } = await (supabase.from as any)("users")
-    .select("id, studio_id, email, full_name, phone, avatar_url, date_of_birth, date_of_joining, designation, employment_type, department, role, hourly_rate, is_active, created_at")
+    .select("id, studio_id, email, full_name, phone, avatar_url, date_of_birth, date_of_joining, designation, employment_type, department, role, hourly_rate, is_active, calendar_connected, created_at")
     .eq("studio_id", studioId)
     .order("is_active", { ascending: false })
     .order("date_of_joining", { ascending: true, nullsFirst: false })

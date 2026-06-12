@@ -1,7 +1,8 @@
 "use client"
 
+import React from "react"
 import Link from "next/link"
-import { AlertCircle, AlertTriangle, Info } from "lucide-react"
+import { AlertCircle, AlertTriangle, Info, CalendarClock } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { PermissionGate } from "@/components/PermissionGate"
 import type { ActivityFeedItem } from "@/app/actions/dashboard"
@@ -38,6 +39,11 @@ const TYPE_LINK_LABEL: Record<ActivityFeedItem['type'], string> = {
   overdue_invoice: 'View Invoice',
   pending_procurement: 'View Approvals',
   new_site_update: 'View Update',
+  resource_conflict: 'View Availability',
+}
+
+const TYPE_ICON_OVERRIDE: Partial<Record<ActivityFeedItem['type'], React.ElementType>> = {
+  resource_conflict: CalendarClock,
 }
 
 export function ActivityFeed({ items, leaveAlertCount }: ActivityFeedProps) {
@@ -85,10 +91,10 @@ export function ActivityFeed({ items, leaveAlertCount }: ActivityFeedProps) {
           <div>
             {items.map((item, idx) => {
               const cfg = SEVERITY_CONFIG[item.severity]
-              const Icon = cfg.icon
+              const Icon = TYPE_ICON_OVERRIDE[item.type] ?? cfg.icon
               const isLast = idx === items.length - 1
 
-              return (
+              const row = (
                 <div
                   key={item.id}
                   className="flex items-center gap-3 px-4"
@@ -121,6 +127,16 @@ export function ActivityFeed({ items, leaveAlertCount }: ActivityFeedProps) {
                   </Link>
                 </div>
               )
+
+              if (item.type === 'resource_conflict') {
+                return (
+                  <PermissionGate key={item.id} action="manage_team">
+                    {row}
+                  </PermissionGate>
+                )
+              }
+
+              return row
             })}
           </div>
         )}

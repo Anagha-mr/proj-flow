@@ -271,6 +271,11 @@ export async function sendInvoiceToClient(invoiceId: string): Promise<void> {
     .then(() => {})
     .catch(() => {})
 
+  // Fire-and-forget calendar push for invoice due date
+  import("./calendar").then(({ pushToGoogleCalendar }) =>
+    pushToGoogleCalendar("invoice_due_date", invoiceId).catch(() => {})
+  ).catch(() => {})
+
   revalidatePath(`/dashboard/projects/${invoice.project_id as string}/finance`)
 }
 
@@ -331,6 +336,13 @@ export async function recordManualPayment(
     .update({ status: newStatus })
     .eq("id", invoiceId)
     .eq("studio_id", studioId)
+
+  // Remove calendar event if invoice is now fully paid
+  if (newStatus === "paid") {
+    import("./calendar").then(({ removeFromGoogleCalendar }) =>
+      removeFromGoogleCalendar("invoice_due_date", invoiceId).catch(() => {})
+    ).catch(() => {})
+  }
 
   revalidatePath(`/dashboard/projects/${invoice.project_id as string}/finance`)
 }
