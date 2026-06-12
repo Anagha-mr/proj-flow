@@ -8,12 +8,14 @@ import { ProjectCardsStrip } from "./project-cards-strip"
 import { ActivityFeed } from "./activity-feed"
 import { MyTasksWidget } from "./my-tasks-widget"
 import { NarrativesDashboardSection } from "@/components/narratives/narratives-dashboard-section"
+import { AISuggestionsTray } from "@/components/gmail/ai-suggestions-tray"
 import type {
   DashboardMetrics,
   DashboardProjectCard,
   ActivityFeedItem,
 } from "@/app/actions/dashboard"
 import type { WeeklyNarrative } from "@/app/actions/narratives"
+import type { AISuggestion } from "@/app/actions/gmail"
 
 interface DashboardClientProps {
   firstName: string
@@ -23,6 +25,9 @@ interface DashboardClientProps {
   activityFeed: ActivityFeedItem[]
   leaveAlertCount: number
   pendingNarratives: WeeklyNarrative[]
+  aiSuggestions: AISuggestion[]
+  gmailConnected: boolean
+  gmailAddress: string | null
 }
 
 const ROLE_BADGE: Record<string, { label: string; bg: string; color: string }> = {
@@ -49,8 +54,12 @@ export function DashboardClient({
   activityFeed,
   leaveAlertCount,
   pendingNarratives,
+  aiSuggestions,
+  gmailConnected,
+  gmailAddress,
 }: DashboardClientProps) {
   const showFinancials = usePermission('view_financials')
+  const canManageStudio = usePermission('manage_studio')
   const isDesignerOrIntern = role === 'designer' || role === 'intern'
 
   const badge = ROLE_BADGE[role] ?? ROLE_BADGE.designer
@@ -83,6 +92,15 @@ export function DashboardClient({
 
       {/* Metric cards — server-rendered data, no skeleton needed */}
       <MetricCards metrics={metrics} showFinancials={showFinancials} />
+
+      {/* AI Suggestions tray — owner + senior_designer only */}
+      {canManageStudio && (
+        <AISuggestionsTray
+          suggestions={aiSuggestions}
+          gmailConnected={gmailConnected}
+          gmailAddress={gmailAddress}
+        />
+      )}
 
       {/* Designer/intern role: show My Tasks widget first */}
       {isDesignerOrIntern && (

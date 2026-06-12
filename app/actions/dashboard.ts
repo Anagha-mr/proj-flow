@@ -515,3 +515,24 @@ export async function getDashboardActivityFeed(): Promise<ActivityFeedItem[]> {
 
   return items.slice(0, 20)
 }
+
+// ─── getDashboardAISuggestions ────────────────────────────────────────────────
+
+import type { AISuggestion } from "./gmail"
+
+export async function getDashboardAISuggestions(): Promise<AISuggestion[]> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const now = new Date().toISOString()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase.from as any)('ai_suggestions')
+    .select('*')
+    .eq('studio_id', studioId)
+    .eq('status', 'pending')
+    .gt('expires_at', now)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  return (data ?? []) as AISuggestion[]
+}

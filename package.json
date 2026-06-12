@@ -38,8 +38,10 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dhtmlx-gantt": "^9.1.4",
+    "fabric": "^5.5.2",
     "lucide-react": "^1.14.0",
     "next": "16.2.5",
+    "pdfjs-dist": "^6.0.227",
     "puppeteer": "^24.43.0",
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.6",
@@ -53,6 +55,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/fabric": "^5.3.11",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

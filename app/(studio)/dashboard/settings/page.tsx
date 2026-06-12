@@ -4,7 +4,9 @@ import { NotificationPreferences } from "@/components/settings/notification-pref
 import { BillingTab } from "@/components/settings/billing-tab"
 import { IntegrationsTab } from "@/components/settings/integrations-tab"
 import { POThresholdSettings } from "@/components/settings/po-threshold-settings"
+import { GmailSettingsCard } from "@/components/gmail/gmail-settings-card"
 import { getCanvaConnectionStatus } from "@/app/actions/canva"
+import { getGmailConnectionStatus } from "@/app/actions/settings"
 
 export const metadata: Metadata = { title: "Settings" }
 
@@ -28,7 +30,10 @@ export default async function SettingsPage() {
 
   const isOwner = profile?.role === "owner"
 
-  const canvaStatus = isOwner ? await getCanvaConnectionStatus().catch(() => null) : null
+  const [canvaStatus, gmailStatus] = await Promise.all([
+    isOwner ? getCanvaConnectionStatus().catch(() => null) : Promise.resolve(null),
+    isOwner ? getGmailConnectionStatus().catch(() => ({ connected: false, gmail_address: null, last_sync_at: null })) : Promise.resolve(null),
+  ])
 
   return (
     <div className="flex flex-col gap-8">
@@ -75,6 +80,13 @@ export default async function SettingsPage() {
             initialRazorpayPassFee={studio?.razorpay_pass_fee_to_client ?? false}
             initialAiEnabled={studio?.ai_enabled !== false}
           />
+          {gmailStatus && (
+            <GmailSettingsCard
+              connected={gmailStatus.connected}
+              gmailAddress={gmailStatus.gmail_address}
+              lastSyncAt={gmailStatus.last_sync_at}
+            />
+          )}
         </section>
       )}
 

@@ -16,7 +16,10 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/canva/callback") ||
     pathname.startsWith("/api/moodboards/approve") ||
     pathname.startsWith("/api/stage-payment/confirm") ||
-    pathname.startsWith("/api/razorpay/webhook")
+    pathname.startsWith("/api/razorpay/webhook") ||
+    pathname.startsWith("/api/rfi/contractor") ||
+    pathname.startsWith("/api/gmail/auth") ||
+    pathname.startsWith("/api/gmail/callback")
   ) {
     return NextResponse.next()
   }

@@ -2,16 +2,18 @@
 
 import { useState } from "react"
 import { isPast } from "date-fns"
-import { ClipboardList } from "lucide-react"
+import { ClipboardList, PenLine } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PermissionGate } from "@/components/PermissionGate"
 import { RfiCard } from "./rfi-card"
 import { RaiseRfiSheet } from "./raise-rfi-sheet"
 import { RfiDetailSheet } from "./rfi-detail-sheet"
+import { CreateAnnotatedRFISheet } from "@/components/rfi/create-annotated-rfi-sheet"
+import { RFIDetailPanel } from "@/components/rfi/rfi-detail-panel"
 import { deleteRfi } from "@/app/actions/rfis"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
-import type { RFI } from "@/app/actions/rfis"
+import type { RFI, RFIWithAnnotations } from "@/app/actions/rfis"
 import type { Contractor } from "@/app/actions/contractors"
 import type { StudioRole } from "@/lib/supabase/types"
 
@@ -40,7 +42,9 @@ export function RfiTab({ project, initialRfis, currentUser, projectDocuments, pr
   const [rfis, setRfis] = useState<RFI[]>(initialRfis)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [raiseOpen, setRaiseOpen] = useState(false)
+  const [annotatedRfiOpen, setAnnotatedRfiOpen] = useState(false)
   const [detailRfi, setDetailRfi] = useState<RFI | null>(null)
+  const [annotatedDetailRfi, setAnnotatedDetailRfi] = useState<RFIWithAnnotations | null>(null)
   const [loaded] = useState(true)
 
   const canManage = hasPermission(currentUser.role as StudioRole, "manage_rfis")
@@ -75,6 +79,15 @@ export function RfiTab({ project, initialRfis, currentUser, projectDocuments, pr
             className="bg-[#e94560] hover:bg-[#d63850] text-white gap-1.5"
           >
             + Raise RFI
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAnnotatedRfiOpen(true)}
+            className="gap-1.5"
+          >
+            <PenLine className="w-3.5 h-3.5" />
+            + New RFI
           </Button>
         </PermissionGate>
 
@@ -126,16 +139,38 @@ export function RfiTab({ project, initialRfis, currentUser, projectDocuments, pr
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {filtered.map((rfi) => (
-            <RfiCard
-              key={rfi.id}
-              rfi={rfi}
-              onClick={() => setDetailRfi(rfi)}
-              onRespond={() => setDetailRfi(rfi)}
-              onChangeStatus={() => setDetailRfi(rfi)}
-              onDelete={() => handleDelete(rfi.id)}
-            />
-          ))}
+          {filtered.map((rfi) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const hasAnnotation = !!(rfi as any).annotation_data
+            return (
+              <div key={rfi.id} className="relative">
+                {hasAnnotation && (
+                  <span className="absolute top-3 right-10 z-10 flex items-center gap-0.5 text-[#e94560]" title="Has drawing annotation">
+                    <PenLine size={12} />
+                  </span>
+                )}
+                <RfiCard
+                  rfi={rfi}
+                  onClick={() => {
+                    if (hasAnnotation) {
+                      setAnnotatedDetailRfi(rfi as unknown as RFIWithAnnotations)
+                    } else {
+                      setDetailRfi(rfi)
+                    }
+                  }}
+                  onRespond={() => {
+                    if (hasAnnotation) {
+                      setAnnotatedDetailRfi(rfi as unknown as RFIWithAnnotations)
+                    } else {
+                      setDetailRfi(rfi)
+                    }
+                  }}
+                  onChangeStatus={() => setDetailRfi(rfi)}
+                  onDelete={() => handleDelete(rfi.id)}
+                />
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -148,6 +183,13 @@ export function RfiTab({ project, initialRfis, currentUser, projectDocuments, pr
         onCreated={(r) => setRfis((prev) => [r, ...prev])}
       />
 
+      <CreateAnnotatedRFISheet
+        open={annotatedRfiOpen}
+        onOpenChange={setAnnotatedRfiOpen}
+        project={project}
+        onCreated={(r) => setRfis((prev) => [r as unknown as RFI, ...prev])}
+      />
+
       {detailRfi && (
         <RfiDetailSheet
           open={!!detailRfi}
@@ -157,6 +199,18 @@ export function RfiTab({ project, initialRfis, currentUser, projectDocuments, pr
           onUpdated={(r) => {
             setRfis((prev) => prev.map((x) => x.id === r.id ? r : x))
             setDetailRfi(r)
+          }}
+        />
+      )}
+
+      {annotatedDetailRfi && (
+        <RFIDetailPanel
+          open={!!annotatedDetailRfi}
+          onOpenChange={(v) => { if (!v) setAnnotatedDetailRfi(null) }}
+          rfi={annotatedDetailRfi}
+          onUpdated={(r) => {
+            setRfis((prev) => prev.map((x) => x.id === r.id ? r as unknown as RFI : x))
+            setAnnotatedDetailRfi(r)
           }}
         />
       )}

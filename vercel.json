@@ -19,6 +19,14 @@
     {
       "path": "/api/cron/send-narratives",
       "schedule": "30 3 * * 1"
+    },
+    {
+      "path": "/api/cron/rfi-escalation",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/gmail-sync",
+      "schedule": "40 3 * * *"
     }
   ]
 }

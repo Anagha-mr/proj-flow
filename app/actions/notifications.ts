@@ -966,6 +966,24 @@ export async function notifyMoodboardRevisionRequested(
   }
 }
 
+// ─── Sprint 20: RFI annotation notification stubs ────────────────────────────
+
+export async function notifyRFICreated(rfiId: string): Promise<void> {
+  console.log('NOTIFY: RFI created', rfiId)
+}
+
+export async function notifyRFIReceivedFromContractor(rfiId: string): Promise<void> {
+  console.log('NOTIFY: RFI received from contractor', rfiId)
+}
+
+export async function notifyRFIResponded(rfiId: string): Promise<void> {
+  console.log('NOTIFY: RFI responded', rfiId)
+}
+
+export async function notifyRFIEscalated(rfiId: string): Promise<void> {
+  console.log('NOTIFY: RFI escalated', rfiId)
+}
+
 export async function notifyLeaveRequest(leaveRequestId: string): Promise<void> {
   console.log('NOTIFY: new leave request', leaveRequestId)
 }

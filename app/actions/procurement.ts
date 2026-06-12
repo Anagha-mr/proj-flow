@@ -52,6 +52,10 @@ export interface ProcurementItem {
   brand: string | null
   supplier_name: string | null
   source_url: string | null
+  product_image_url: string | null
+  material_finish: string | null
+  dimensions: string | null
+  last_url_refresh_at: string | null
   dimensions_length: number | null
   dimensions_height: number | null
   dimensions_depth: number | null
@@ -315,7 +319,7 @@ export async function getItems(scheduleId: string): Promise<ProcurementItem[]> {
   return items.map((item) => ({
     ...item,
     status: statusMap[item.id],
-  })) as ProcurementItem[]
+  })) as unknown as ProcurementItem[]
 }
 
 // ─── createItem ───────────────────────────────────────────────────────────────
@@ -332,6 +336,10 @@ export async function createItem(input: {
   brand?: string
   supplierName?: string
   description?: string
+  productImageUrl?: string
+  materialFinish?: string
+  dimensions?: string
+  lastUrlRefreshAt?: string
 }): Promise<ProcurementItem> {
   const { supabase, studioId, userId } = await getAuthContext()
 
@@ -355,8 +363,8 @@ export async function createItem(input: {
 
   const nextPosition = maxRow ? maxRow.position + 1 : 0
 
-  const { data: item, error } = await supabase
-    .from("procurement_items")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: item, error } = await (supabase.from("procurement_items") as any)
     .insert({
       schedule_id: input.scheduleId,
       project_id: input.projectId,
@@ -370,6 +378,10 @@ export async function createItem(input: {
       brand: input.brand ?? null,
       supplier_name: input.supplierName ?? null,
       description: input.description ?? null,
+      product_image_url: input.productImageUrl ?? null,
+      material_finish: input.materialFinish ?? null,
+      dimensions: input.dimensions ?? null,
+      last_url_refresh_at: input.lastUrlRefreshAt ?? null,
       position: nextPosition,
       created_by_id: userId,
     })
@@ -613,7 +625,7 @@ export async function getSchedulePublic(
   const itemsWithStatus = items.map((item) => ({
     ...item,
     status: statusMap[item.id],
-  })) as ProcurementItem[]
+  })) as unknown as ProcurementItem[]
 
   return { schedule: schedule as ProcurementSchedule, items: itemsWithStatus }
 }
@@ -767,7 +779,7 @@ export async function getAllItemsForApprovals(projectId: string): Promise<Procur
   const statusMap: Record<string, ProcurementItemStatus> = {}
   ;(statusRows ?? []).forEach((s) => { statusMap[s.item_id] = s as ProcurementItemStatus })
 
-  return items.map((item) => ({ ...item, status: statusMap[item.id] })) as ProcurementItem[]
+  return items.map((item) => ({ ...item, status: statusMap[item.id] })) as unknown as ProcurementItem[]
 }
 
 // ─── getSchedulesForFinancial ─────────────────────────────────────────────────

@@ -27,8 +27,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Flag, Package, ExternalLink, Trash2, Archive } from "lucide-react"
+import { Flag, Package, ExternalLink, Trash2, Archive, RefreshCw } from "lucide-react"
 import { updateItem, updateItemStatus, deleteItem, archiveItem, type ProcurementItem, type CurationStatus, type ClientApprovalStatus, type ProcurementStatus, type PaymentStatus } from "@/app/actions/procurement"
+import { refreshProductFromURL } from "@/app/actions/product-discovery"
 import { useToast } from "@/hooks/use-toast"
 
 interface ItemDetailPanelProps {
@@ -80,6 +81,7 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
   const { toast } = useToast()
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Item fields
@@ -88,7 +90,6 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
   const [brand, setBrand] = useState(item.brand ?? "")
   const [productCode, setProductCode] = useState(item.product_code ?? "")
   const [supplierName, setSupplierName] = useState(item.supplier_name ?? "")
-  const [sourceUrl, setSourceUrl] = useState(item.source_url ?? "")
   const [dimLength, setDimLength] = useState(item.dimensions_length?.toString() ?? "")
   const [dimHeight, setDimHeight] = useState(item.dimensions_height?.toString() ?? "")
   const [dimDepth, setDimDepth] = useState(item.dimensions_depth?.toString() ?? "")
@@ -98,6 +99,10 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
   const [quantity, setQuantity] = useState(item.quantity.toString())
   const [unitCost, setUnitCost] = useState(item.unit_cost.toString())
   const [imageUrl, setImageUrl] = useState(item.image_url ?? "")
+  // Sprint 21 new fields
+  const [productImageUrl, setProductImageUrl] = useState(item.product_image_url ?? "")
+  const [materialFinish, setMaterialFinish] = useState(item.material_finish ?? "")
+  const [dimensions, setDimensions] = useState(item.dimensions ?? "")
   const [isFlagged, setIsFlagged] = useState(item.is_flagged)
   const [inStock, setInStock] = useState(item.in_stock ?? false)
 
@@ -136,7 +141,6 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
   function onBlurBrand() { if (brand !== (item.brand ?? "")) triggerSave({ brand }) }
   function onBlurProductCode() { if (productCode !== (item.product_code ?? "")) triggerSave({ product_code: productCode }) }
   function onBlurSupplierName() { if (supplierName !== (item.supplier_name ?? "")) triggerSave({ supplier_name: supplierName }) }
-  function onBlurSourceUrl() { if (sourceUrl !== (item.source_url ?? "")) triggerSave({ source_url: sourceUrl }) }
   function onBlurDimensions() {
     triggerSave({
       dimensions_length: dimLength ? parseFloat(dimLength) : null,
@@ -156,6 +160,33 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
     if (c !== item.unit_cost) triggerSave({ unit_cost: c })
   }
   function onBlurImageUrl() { if (imageUrl !== (item.image_url ?? "")) triggerSave({ image_url: imageUrl }) }
+  function onBlurProductImageUrl() { if (productImageUrl !== (item.product_image_url ?? "")) triggerSave({ product_image_url: productImageUrl }) }
+  function onBlurMaterialFinish() { if (materialFinish !== (item.material_finish ?? "")) triggerSave({ material_finish: materialFinish }) }
+  function onBlurDimensionsText() { if (dimensions !== (item.dimensions ?? "")) triggerSave({ dimensions }) }
+
+  async function handleRefreshFromUrl() {
+    setRefreshing(true)
+    try {
+      const result = await refreshProductFromURL(item.id)
+      if (result.success && result.product) {
+        const p = result.product
+        if (p.name) setName(p.name)
+        if (p.brand) setBrand(p.brand)
+        if (p.price !== null && p.price !== undefined) setUnitCost(String(p.price))
+        if (p.image_url) setProductImageUrl(p.image_url)
+        if (p.material_finish) setMaterialFinish(p.material_finish)
+        if (p.dimensions) setDimensions(p.dimensions)
+        if (p.description) setDescription(p.description)
+        toast({ title: "Product details updated from source" })
+      } else {
+        toast({ title: result.error ?? "Failed to update from URL", variant: "destructive" })
+      }
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Failed to update", variant: "destructive" })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   async function handleSave() {
     try {
@@ -165,7 +196,6 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
         brand: brand || null,
         product_code: productCode || null,
         supplier_name: supplierName || null,
-        source_url: sourceUrl || null,
         dimensions_length: dimLength ? parseFloat(dimLength) : null,
         dimensions_height: dimHeight ? parseFloat(dimHeight) : null,
         dimensions_depth: dimDepth ? parseFloat(dimDepth) : null,
@@ -175,6 +205,9 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
         quantity: parseFloat(quantity) || 1,
         unit_cost: parseFloat(unitCost) || 0,
         image_url: imageUrl || null,
+        product_image_url: productImageUrl || null,
+        material_finish: materialFinish || null,
+        dimensions: dimensions || null,
         is_flagged: isFlagged,
         in_stock: inStock,
       })
@@ -305,24 +338,91 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
                   />
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Source URL</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      onBlur={onBlurSourceUrl}
-                      placeholder="https://..."
-                      className="focus-visible:ring-[#e94560] text-sm"
-                    />
-                    {sourceUrl && (
-                      <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+                {/* Source URL — read-only to prevent accidental breakage */}
+                {item.source_url && (
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Source URL</label>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground truncate flex-1 bg-muted/50 rounded px-3 py-2">
+                        {item.source_url}
+                      </p>
+                      <a href={item.source_url} target="_blank" rel="noopener noreferrer">
                         <Button variant="outline" size="icon" className="shrink-0">
                           <ExternalLink className="w-4 h-4" />
                         </Button>
                       </a>
+                      {!refreshing && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={handleRefreshFromUrl}
+                          title="Update from URL"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {refreshing && (
+                        <Button variant="outline" size="icon" className="shrink-0" disabled>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        </Button>
+                      )}
+                    </div>
+                    {item.last_url_refresh_at && (
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Last refreshed {new Date(item.last_url_refresh_at).toLocaleDateString()}
+                      </p>
                     )}
                   </div>
+                )}
+
+                {/* Product Image URL (from AI autofill) */}
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Product Image (AI-extracted)</label>
+                  <div className="flex gap-2">
+                    {productImageUrl && (
+                      <div className="w-16 h-16 rounded-[6px] bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={productImageUrl}
+                          alt={name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      </div>
+                    )}
+                    <Input
+                      value={productImageUrl}
+                      onChange={(e) => setProductImageUrl(e.target.value)}
+                      onBlur={onBlurProductImageUrl}
+                      placeholder="https://..."
+                      className="focus-visible:ring-[#e94560] text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Material / Finish (combined text field from AI) */}
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Material / Finish</label>
+                  <Input
+                    value={materialFinish}
+                    onChange={(e) => setMaterialFinish(e.target.value)}
+                    onBlur={onBlurMaterialFinish}
+                    placeholder="e.g. Brushed brass, Matte white ceramic"
+                    className="focus-visible:ring-[#e94560] text-sm"
+                  />
+                </div>
+
+                {/* Dimensions (text field from AI) */}
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Dimensions</label>
+                  <Input
+                    value={dimensions}
+                    onChange={(e) => setDimensions(e.target.value)}
+                    onBlur={onBlurDimensionsText}
+                    placeholder="e.g. 120cm × 60cm × 45cm"
+                    className="focus-visible:ring-[#e94560] text-sm"
+                  />
                 </div>
               </div>
             </section>

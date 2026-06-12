@@ -4,6 +4,8 @@
 import { notFound } from "next/navigation"
 import { createServiceClient } from "@/lib/supabase/service"
 import { ContractorStagePayments } from "@/components/contractor/stage-payments"
+import { ContractorRfiSection } from "@/components/contractor/rfi-section"
+import { getContractorRFIs } from "@/app/actions/rfis"
 
 export default async function ContractorPage({
   params,
@@ -59,14 +61,23 @@ export default async function ContractorPage({
     }> | null
   }
 
-  // Fetch project names
-  const projectIds = [...new Set((stagePayments ?? []).map((p) => p.project_id))]
+  // Fetch all projects linked to this contractor
+  const { data: projectContractors } = await supabase
+    .from("project_contractors")
+    .select("project_id")
+    .eq("contractor_id", contractor.id)
+
+  const allProjectIds = [...new Set([
+    ...(projectContractors ?? []).map((pc) => (pc as Record<string, unknown>).project_id as string),
+    ...(stagePayments ?? []).map((p) => p.project_id),
+  ])]
+
   const projectMap: Record<string, string> = {}
-  if (projectIds.length > 0) {
+  if (allProjectIds.length > 0) {
     const { data: projects } = await supabase
       .from("projects")
       .select("id, name")
-      .in("id", projectIds)
+      .in("id", allProjectIds)
     ;(projects ?? []).forEach((p) => {
       projectMap[(p as Record<string, unknown>).id as string] = (p as Record<string, unknown>).name as string
     })
@@ -76,6 +87,14 @@ export default async function ContractorPage({
     ...p,
     project_name: projectMap[p.project_id] ?? "Project",
   }))
+
+  // Fetch all RFIs for this contractor across linked projects
+  const rfisByProject = await Promise.all(
+    allProjectIds.map((pid) => getContractorRFIs(token, pid).catch(() => []))
+  )
+  const allRfis = rfisByProject.flat()
+
+  const linkedProjects = allProjectIds.map((id) => ({ id, name: projectMap[id] ?? "Project" }))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -94,6 +113,12 @@ export default async function ContractorPage({
         <ContractorStagePayments
           contractorToken={token}
           payments={payments}
+        />
+
+        <ContractorRfiSection
+          contractorToken={token}
+          initialRfis={allRfis}
+          projects={linkedProjects}
         />
       </div>
     </div>

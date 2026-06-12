@@ -21,6 +21,8 @@ import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
@@ -48,10 +50,12 @@ import {
   MoreHorizontal,
   Package,
   Flag,
-  Link as LinkIcon,
+  ExternalLink,
   ChevronDown,
   ChevronRight,
   Share2,
+  RefreshCw,
+  Loader2,
 } from "lucide-react"
 import {
   getItems,
@@ -61,11 +65,13 @@ import {
   deleteItem,
   updateItem,
   reorderItems,
-  enrichItemFromUrl,
   type ProcurementSchedule,
   type ProcurementItem,
   type ViewType,
 } from "@/app/actions/procurement"
+import { refreshProductFromURL } from "@/app/actions/product-discovery"
+import type { ExtractedProduct } from "@/app/actions/product-discovery"
+import { URLAutofillInput } from "@/components/procurement/url-autofill-input"
 import { ItemDetailPanel } from "./item-detail-panel"
 import { ScheduleSharePanel } from "./schedule-share-panel"
 import { useToast } from "@/hooks/use-toast"
@@ -127,12 +133,16 @@ function SortableItemRow({
   onArchive,
   onDelete,
   onFlag,
+  onRefreshFromUrl,
+  isRefreshing,
 }: {
   item: ProcurementItem
   onOpen: (item: ProcurementItem) => void
   onArchive: (itemId: string) => void
   onDelete: (itemId: string) => void
   onFlag: (item: ProcurementItem) => void
+  onRefreshFromUrl: (item: ProcurementItem) => void
+  isRefreshing: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id })
@@ -147,6 +157,11 @@ function SortableItemRow({
   const clientApproval = item.status?.client_approval_status
   const curationMeta = curation ? CURATION_BADGE[curation] : null
   const clientMeta = clientApproval ? CLIENT_BADGE[clientApproval] : null
+
+  // Use product_image_url (AI-extracted) first, fallback to image_url
+  const thumbUrl = item.product_image_url || item.image_url
+
+  const brandDimensions = [item.brand, item.dimensions].filter(Boolean).join(' · ')
 
   return (
     <div
@@ -165,25 +180,45 @@ function SortableItemRow({
         <GripVertical className="w-4 h-4 text-muted-foreground" />
       </button>
 
-      {/* Thumbnail */}
-      <div className="w-12 h-12 rounded bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-        {item.image_url ? (
+      {/* Thumbnail — 40px desktop, 32px mobile */}
+      <div className="w-8 h-8 md:w-10 md:h-10 rounded bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+        {thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+          <img
+            src={thumbUrl}
+            alt={item.name}
+            className="w-full h-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+          />
         ) : (
-          <Package className="w-5 h-5 text-muted-foreground" />
+          <Package className="w-4 h-4 text-muted-foreground" />
         )}
       </div>
 
-      {/* Name + description */}
+      {/* Name + source URL indicator + brand/dimensions */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{item.name}</p>
-        {item.description && (
+        <div className="flex items-center gap-1">
+          <p className="text-sm font-medium truncate">{item.name}</p>
+          {item.source_url && (
+            <a
+              href={item.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0"
+            >
+              <ExternalLink className="w-2.5 h-2.5 text-muted-foreground hover:text-foreground transition-colors" />
+            </a>
+          )}
+        </div>
+        {brandDimensions ? (
+          <p className="text-xs text-muted-foreground truncate">{brandDimensions}</p>
+        ) : item.description ? (
           <p className="text-xs text-muted-foreground line-clamp-1">{item.description}</p>
-        )}
+        ) : null}
       </div>
 
-      {/* Brand */}
+      {/* Brand column (desktop) */}
       <div className="hidden md:block w-24 text-xs text-muted-foreground truncate">
         {item.brand || "—"}
       </div>
@@ -235,6 +270,19 @@ function SortableItemRow({
           <DropdownMenuItem onClick={() => onFlag(item)}>
             {item.is_flagged ? "Unflag" : "Flag"}
           </DropdownMenuItem>
+          {item.source_url && (
+            <DropdownMenuItem
+              onClick={() => onRefreshFromUrl(item)}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? (
+                <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3 mr-2" />
+              )}
+              Update from URL
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => onArchive(item.id)}>Archive</DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive"
@@ -256,10 +304,12 @@ function GroupSection({
   projectId,
   scheduleId,
   studioId,
+  refreshingItemId,
   onItemOpen,
   onItemArchive,
   onItemDelete,
   onItemFlag,
+  onItemRefreshFromUrl,
   onDragEnd,
   onQuickAdd,
 }: {
@@ -268,10 +318,12 @@ function GroupSection({
   projectId: string
   scheduleId: string
   studioId: string
+  refreshingItemId: string | null
   onItemOpen: (item: ProcurementItem) => void
   onItemArchive: (itemId: string) => void
   onItemDelete: (itemId: string) => void
   onItemFlag: (item: ProcurementItem) => void
+  onItemRefreshFromUrl: (item: ProcurementItem) => void
   onDragEnd: (groupName: string, event: DragEndEvent, items: ProcurementItem[]) => void
   onQuickAdd: (groupName: string, name: string) => void
 }) {
@@ -316,6 +368,8 @@ function GroupSection({
                       onArchive={onItemArchive}
                       onDelete={onItemDelete}
                       onFlag={onItemFlag}
+                      onRefreshFromUrl={onItemRefreshFromUrl}
+                      isRefreshing={refreshingItemId === item.id}
                     />
                   ))
                 )}
@@ -344,74 +398,236 @@ function GroupSection({
   )
 }
 
-// ─── Add from URL Sheet ───────────────────────────────────────────────────────
+// ─── Add Item Sheet (URL autofill + manual form) ──────────────────────────────
 
-function AddFromUrlSheet({
+function AddItemSheet({
   open,
   onOpenChange,
-  onExtracted,
+  scheduleId,
+  projectId,
+  onItemCreated,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
-  onExtracted: (data: Record<string, unknown>) => void
+  scheduleId: string
+  projectId: string
+  onItemCreated: (item: ProcurementItem) => void
 }) {
   const { toast } = useToast()
-  const [url, setUrl] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  async function handleExtract() {
-    if (!url.trim()) return
-    setLoading(true)
+  // Form state
+  const [name, setName] = useState("")
+  const [unitCost, setUnitCost] = useState("")
+  const [brand, setBrand] = useState("")
+  const [materialFinish, setMaterialFinish] = useState("")
+  const [dimensions, setDimensions] = useState("")
+  const [description, setDescription] = useState("")
+  const [productImageUrl, setProductImageUrl] = useState("")
+  const [sourceUrl, setSourceUrl] = useState("")
+
+  // Track which fields were auto-filled for green border
+  const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set())
+
+  function handleExtracted(product: ExtractedProduct) {
+    const filled = new Set<string>()
+    if (product.name) { setName(product.name); filled.add("name") }
+    if (product.price !== null && product.price !== undefined) { setUnitCost(String(product.price)); filled.add("unitCost") }
+    if (product.brand) { setBrand(product.brand); filled.add("brand") }
+    if (product.material_finish) { setMaterialFinish(product.material_finish); filled.add("materialFinish") }
+    if (product.dimensions) { setDimensions(product.dimensions); filled.add("dimensions") }
+    if (product.description) { setDescription(product.description); filled.add("description") }
+    if (product.image_url) { setProductImageUrl(product.image_url); filled.add("productImageUrl") }
+    setSourceUrl(product.source_url)
+    setAutoFilled(filled)
+  }
+
+  function handleClear() {
+    setName("")
+    setUnitCost("")
+    setBrand("")
+    setMaterialFinish("")
+    setDimensions("")
+    setDescription("")
+    setProductImageUrl("")
+    setSourceUrl("")
+    setAutoFilled(new Set())
+  }
+
+  function clearAutoFill(field: string) {
+    setAutoFilled(prev => {
+      const next = new Set(prev)
+      next.delete(field)
+      return next
+    })
+  }
+
+  function autofillBorder(field: string) {
+    return autoFilled.has(field)
+      ? "border-l-2 border-[#1D9E75] transition-all duration-300"
+      : "transition-all duration-300"
+  }
+
+  async function handleSave() {
+    if (!name.trim()) {
+      toast({ title: "Product name is required", variant: "destructive" })
+      return
+    }
+    setSaving(true)
     try {
-      const data = await enrichItemFromUrl(url.trim())
-      onExtracted(data as Record<string, unknown>)
+      const item = await createItem({
+        scheduleId,
+        projectId,
+        name: name.trim(),
+        unitCost: unitCost ? parseFloat(unitCost) : 0,
+        brand: brand.trim() || undefined,
+        description: description.trim() || undefined,
+        sourceUrl: sourceUrl || undefined,
+        productImageUrl: productImageUrl || undefined,
+        materialFinish: materialFinish.trim() || undefined,
+        dimensions: dimensions.trim() || undefined,
+        lastUrlRefreshAt: sourceUrl ? new Date().toISOString() : undefined,
+      })
+      onItemCreated(item)
       onOpenChange(false)
-      toast({ title: "Product details extracted" })
+      // Reset form
+      handleClear()
+      toast({ title: "Item added" })
     } catch (err) {
       toast({
-        title: "Extraction failed",
-        description: err instanceof Error ? err.message : "Could not extract product details",
+        title: "Failed to add item",
+        description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-[480px] overflow-y-auto">
+      <SheetContent side="right" className="w-full sm:max-w-[520px] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Add from URL</SheetTitle>
+          <SheetTitle>Add Item</SheetTitle>
         </SheetHeader>
-        <div className="flex flex-col gap-4 mt-6">
-          <p className="text-sm text-muted-foreground">
-            Paste a product URL and we&apos;ll extract the details automatically.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              placeholder="https://..."
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleExtract()}
-              className="focus-visible:ring-[#e94560]"
-            />
-            <Button
-              onClick={handleExtract}
-              disabled={loading || !url.trim()}
-              className="bg-[#e94560] hover:bg-[#c73652] text-white shrink-0"
-            >
-              {loading ? "Extracting…" : "Extract"}
-            </Button>
+
+        <div className="flex flex-col gap-5 mt-5 pb-6">
+          {/* URL Autofill section */}
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Quick Add from URL
+            </p>
+            <URLAutofillInput onExtracted={handleExtracted} onClear={handleClear} />
           </div>
-          {loading && (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">Extracting product details…</p>
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
+
+          <div className="relative flex items-center gap-3">
+            <Separator className="flex-1" />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">or fill in manually</span>
+            <Separator className="flex-1" />
+          </div>
+
+          {/* Product Image preview */}
+          {productImageUrl && (
+            <div className="flex items-center gap-3">
+              <div className="w-16 h-16 rounded-[6px] bg-muted overflow-hidden shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={productImageUrl}
+                  alt="Product"
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => { setProductImageUrl(""); clearAutoFill("productImageUrl") }}
+                className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+              >
+                Remove
+              </button>
             </div>
           )}
+
+          {/* Form fields */}
+          <div className="flex flex-col gap-3">
+            <div className={autofillBorder("name")}>
+              <label className="text-sm font-medium mb-1 block">Name *</label>
+              <Input
+                value={name}
+                onChange={(e) => { setName(e.target.value); clearAutoFill("name") }}
+                placeholder="Product name"
+                className="focus-visible:ring-[#e94560]"
+              />
+            </div>
+
+            <div className={autofillBorder("unitCost")}>
+              <label className="text-sm font-medium mb-1 block">Unit Cost ₹</label>
+              <Input
+                type="number"
+                min={0}
+                value={unitCost}
+                onChange={(e) => { setUnitCost(e.target.value); clearAutoFill("unitCost") }}
+                placeholder="0"
+                className="focus-visible:ring-[#e94560]"
+              />
+            </div>
+
+            <div className={autofillBorder("brand")}>
+              <label className="text-sm font-medium mb-1 block">Brand</label>
+              <Input
+                value={brand}
+                onChange={(e) => { setBrand(e.target.value); clearAutoFill("brand") }}
+                placeholder="e.g. Hafele, Grohe, Kohler"
+                className="focus-visible:ring-[#e94560]"
+              />
+            </div>
+
+            <div className={autofillBorder("materialFinish")}>
+              <label className="text-sm font-medium mb-1 block">Material / Finish</label>
+              <Input
+                value={materialFinish}
+                onChange={(e) => { setMaterialFinish(e.target.value); clearAutoFill("materialFinish") }}
+                placeholder="e.g. Brushed brass, Matte white ceramic"
+                className="focus-visible:ring-[#e94560]"
+              />
+            </div>
+
+            <div className={autofillBorder("dimensions")}>
+              <label className="text-sm font-medium mb-1 block">Dimensions</label>
+              <Input
+                value={dimensions}
+                onChange={(e) => { setDimensions(e.target.value); clearAutoFill("dimensions") }}
+                placeholder="e.g. 120cm × 60cm × 45cm"
+                className="focus-visible:ring-[#e94560]"
+              />
+            </div>
+
+            <div className={autofillBorder("description")}>
+              <label className="text-sm font-medium mb-1 block">Description</label>
+              <Textarea
+                value={description}
+                onChange={(e) => { setDescription(e.target.value); clearAutoFill("description") }}
+                rows={2}
+                placeholder="Brief product description"
+                className="focus-visible:ring-[#e94560] text-sm"
+              />
+            </div>
+          </div>
+
+          <Button
+            onClick={handleSave}
+            disabled={saving || !name.trim()}
+            className="bg-[#e94560] hover:bg-[#c73652] text-white w-full"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Adding…
+              </>
+            ) : (
+              "Add Item"
+            )}
+          </Button>
         </div>
       </SheetContent>
     </Sheet>
@@ -436,11 +652,11 @@ export function ScheduleDetail({
   const [editingName, setEditingName] = useState(false)
   const [nameVal, setNameVal] = useState(schedule.name)
   const [selectedItem, setSelectedItem] = useState<ProcurementItem | null>(null)
-  const [newItemDefaults, setNewItemDefaults] = useState<Record<string, unknown> | null>(null)
-  const [addFromUrlOpen, setAddFromUrlOpen] = useState(false)
+  const [addSheetOpen, setAddSheetOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [newGroupName, setNewGroupName] = useState("")
   const [addingGroup, setAddingGroup] = useState(false)
+  const [refreshingItemId, setRefreshingItemId] = useState<string | null>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   const canManage = userRole === "owner" || userRole === "senior_designer" || userRole === "designer"
@@ -513,21 +729,24 @@ export function ScheduleDetail({
     }
   }
 
-  async function handleAddItem(groupName?: string) {
+  async function handleManualAdd(groupName?: string) {
     try {
       const item = await createItem({
         scheduleId: schedule.id,
         projectId,
         name: "New Item",
         roomOrCategory: groupName && groupName !== "Uncategorised" ? groupName : undefined,
-        ...newItemDefaults,
       })
       setItems((prev) => [...prev, item])
       setSelectedItem(item)
-      setNewItemDefaults(null)
     } catch {
       toast({ title: "Failed to create item", variant: "destructive" })
     }
+  }
+
+  function handleItemCreated(item: ProcurementItem) {
+    setItems((prev) => [...prev, item])
+    setSelectedItem(item)
   }
 
   async function handleArchiveItem(itemId: string) {
@@ -559,6 +778,26 @@ export function ScheduleDetail({
     }
   }
 
+  async function handleRefreshFromUrl(item: ProcurementItem) {
+    setRefreshingItemId(item.id)
+    try {
+      const result = await refreshProductFromURL(item.id)
+      if (result.success) {
+        toast({ title: "Product details updated from source" })
+        await load()
+      } else {
+        toast({ title: result.error ?? "Failed to update from URL", variant: "destructive" })
+      }
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Failed to update from URL",
+        variant: "destructive",
+      })
+    } finally {
+      setRefreshingItemId(null)
+    }
+  }
+
   async function handleDragEnd(groupName: string, event: DragEndEvent, groupItems: ProcurementItem[]) {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -567,8 +806,7 @@ export function ScheduleDetail({
     const newIndex = groupItems.findIndex((i) => i.id === over.id)
     const reordered = arrayMove(groupItems, oldIndex, newIndex)
 
-    // Update local state optimistically
-    const grouped = groupItems_by(items)
+    const grouped = groupItemsBy(items)
     grouped[groupName] = reordered
     const newItems: ProcurementItem[] = []
     for (const g of Object.keys(grouped)) newItems.push(...grouped[g])
@@ -582,13 +820,8 @@ export function ScheduleDetail({
     }
   }
 
-  function groupItems_by(itemList: ProcurementItem[]): Record<string, ProcurementItem[]> {
+  function groupItemsBy(itemList: ProcurementItem[]): Record<string, ProcurementItem[]> {
     return groupItems(itemList)
-  }
-
-  function handleUrlExtracted(data: Record<string, unknown>) {
-    setNewItemDefaults(data)
-    handleAddItem()
   }
 
   async function handleAddGroup() {
@@ -674,11 +907,10 @@ export function ScheduleDetail({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleAddItem()}>
+                <DropdownMenuItem onClick={() => handleManualAdd()}>
                   Manual Entry
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setAddFromUrlOpen(true)}>
-                  <LinkIcon className="w-4 h-4 mr-2" />
+                <DropdownMenuItem onClick={() => setAddSheetOpen(true)}>
                   Add from URL
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -737,7 +969,7 @@ export function ScheduleDetail({
                 <Button
                   size="sm"
                   className="bg-[#e94560] hover:bg-[#c73652] text-white"
-                  onClick={() => handleAddItem()}
+                  onClick={() => setAddSheetOpen(true)}
                 >
                   <Plus className="w-4 h-4 mr-1" />
                   Add first item
@@ -754,10 +986,12 @@ export function ScheduleDetail({
                   projectId={projectId}
                   scheduleId={schedule.id}
                   studioId={studioId}
+                  refreshingItemId={refreshingItemId}
                   onItemOpen={(item) => setSelectedItem(item)}
                   onItemArchive={handleArchiveItem}
                   onItemDelete={handleDeleteItem}
                   onItemFlag={handleFlagItem}
+                  onItemRefreshFromUrl={handleRefreshFromUrl}
                   onDragEnd={handleDragEnd}
                   onQuickAdd={handleQuickAdd}
                 />
@@ -812,11 +1046,13 @@ export function ScheduleDetail({
         />
       )}
 
-      {/* Add from URL sheet */}
-      <AddFromUrlSheet
-        open={addFromUrlOpen}
-        onOpenChange={setAddFromUrlOpen}
-        onExtracted={handleUrlExtracted}
+      {/* Add Item Sheet (URL autofill + form) */}
+      <AddItemSheet
+        open={addSheetOpen}
+        onOpenChange={setAddSheetOpen}
+        scheduleId={schedule.id}
+        projectId={projectId}
+        onItemCreated={handleItemCreated}
       />
 
       {/* Share panel */}
