@@ -461,9 +461,13 @@ export async function getDocumentAccessLog(documentId: string): Promise<Document
 // ─── getShareableDocument ─────────────────────────────────────────────────────
 
 export async function getShareableDocument(shareToken: string): Promise<DocumentRecord | null> {
-  // No auth required — public endpoint
-  const { createClient } = await import("@/lib/supabase/server")
-  const supabase = await createClient()
+  // No auth required — public endpoint. Anonymous visitors have no Supabase
+  // session, so the regular client is subject to RLS policies scoped to
+  // authenticated studio members and cannot read this row. The service role
+  // client bypasses RLS; authorization here is enforced in application code
+  // via the token match + share_enabled + expiry check below.
+  const { createServiceClient } = await import("@/lib/supabase/service")
+  const supabase = createServiceClient()
 
   const { data, error } = await supabase
     .from("documents")
@@ -473,19 +477,25 @@ export async function getShareableDocument(shareToken: string): Promise<Document
     .or("share_token_expires_at.is.null,share_token_expires_at.gt." + new Date().toISOString())
     .single()
 
-  if (error || !data) return null
+  if (error || !data) {
+    if (error && error.code !== "PGRST116") {
+      console.error("getShareableDocument: query failed", { shareToken, error })
+    }
+    return null
+  }
 
   // Log access (fire-and-forget)
   try {
-    await supabase.from("document_access_logs").insert({
+    const { error: logError } = await supabase.from("document_access_logs").insert({
       document_id: data.id,
       studio_id: data.studio_id,
       accessed_by_type: "public",
       accessed_by_id: null,
       ip_address: null,
     })
-  } catch {
-    // ignore
+    if (logError) console.error("getShareableDocument: access log insert failed", logError)
+  } catch (err) {
+    console.error("getShareableDocument: access log insert threw", err)
   }
 
   return data as DocumentRecord

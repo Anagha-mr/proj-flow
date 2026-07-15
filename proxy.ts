@@ -13,6 +13,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/contractor/") ||
     pathname.startsWith("/vendor/") ||
     pathname.startsWith("/share/moodboard/") ||
+    pathname.startsWith("/share/document/") ||
     pathname.startsWith("/api/canva/callback") ||
     pathname.startsWith("/api/moodboards/approve") ||
     pathname.startsWith("/api/stage-payment/confirm") ||
