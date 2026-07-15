@@ -96,9 +96,11 @@ export function TimelineTab({
         dependencies={dependencies}
         onTaskClick={(task) => { setSelectedTask(task); setPanelOpen(true) }}
         onStatusChange={handleStatusChange}
+        onDependencyChange={fetchData}
       />
 
       <TaskDetailPanel
+        key={selectedTask?.id ?? "none"}
         task={selectedTask}
         open={panelOpen}
         onClose={() => { setPanelOpen(false); setSelectedTask(null) }}

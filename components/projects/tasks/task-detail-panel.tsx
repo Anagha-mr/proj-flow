@@ -121,11 +121,14 @@ export function TaskDetailPanel({
 
   // Load task detail data when task changes
   useEffect(() => {
-    if (!task) return
+    if (!task?.id) return
     setEditTitle(task.title)
     setEditDescription(task.description ?? "")
     setEditProgress(task.progress_percent ?? 0)
     setEditRoomTag(task.room_tag ?? "")
+    setSubtasks([])
+    setComments([])
+    setAttachments([])
     setLoadingDetail(true)
     Promise.all([
       getSubtasks(task.id),
@@ -140,6 +143,16 @@ export function TaskDetailPanel({
       .catch(() => toast({ title: "Failed to load task details", variant: "destructive" }))
       .finally(() => setLoadingDetail(false))
   }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset local draft/UI state whenever the task being viewed changes
+  useEffect(() => {
+    setCommentBody("")
+    setCommentClientVisible(false)
+    setNewSubtaskTitle("")
+    setAssigneePopoverOpen(false)
+    setDeleteDialogOpen(false)
+    setNestedTask(null)
+  }, [task?.id])
 
   const saveField = useCallback(
     async (field: string, value: unknown) => {

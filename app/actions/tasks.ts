@@ -175,15 +175,39 @@ export async function getSubtasks(parentTaskId: string): Promise<TaskWithDetails
     .select(`
       id, studio_id, project_id, parent_task_id, title, description,
       status, priority, phase_tag, room_tag, start_date, due_date,
-      progress_percent, is_recurring, position, created_by, created_at, updated_at,
-      task_assignees(user_id, user:users(id, name, profile_photo_url))
+      progress_percent, is_recurring, position, created_by, created_at, updated_at
     `)
     .eq("parent_task_id", parentTaskId)
     .eq("studio_id", studioId)
     .order("position", { ascending: true })
 
   if (error) throw new Error(error.message)
-  return enrichTasks(supabase, studioId, tasks ?? [])
+  if (!tasks?.length) return []
+
+  const taskIds = tasks.map((t) => t.id)
+
+  // Fetch assignees separately to avoid RLS join issues
+  const { data: assigneesRaw } = await supabase
+    .from("task_assignees")
+    .select("task_id, user:users(id, name, profile_photo_url)")
+    .in("task_id", taskIds)
+    .eq("studio_id", studioId)
+
+  const assigneeMap = new Map<string, TaskAssignee[]>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assigneesRaw?.forEach((a: any) => {
+    if (!a.user) return
+    const list = assigneeMap.get(a.task_id) ?? []
+    list.push(a.user)
+    assigneeMap.set(a.task_id, list)
+  })
+
+  const tasksWithAssignees = tasks.map((t) => ({
+    ...t,
+    task_assignees: (assigneeMap.get(t.id) ?? []).map((u) => ({ user: u })),
+  }))
+
+  return enrichTasks(supabase, studioId, tasksWithAssignees)
 }
 
 // ─── createTask ───────────────────────────────────────────────
@@ -633,6 +657,17 @@ export async function addTaskDependency(taskId: string, dependsOnTaskId: string)
     .maybeSingle()
 
   if (existing) throw new Error("Circular dependency detected")
+
+  // Duplicate check: does this exact dependency already exist?
+  const { data: alreadyExists } = await supabase
+    .from("task_dependencies")
+    .select("id")
+    .eq("task_id", taskId)
+    .eq("depends_on_task_id", dependsOnTaskId)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  if (alreadyExists) throw new Error("This dependency already exists")
 
   const { data, error } = await supabase
     .from("task_dependencies")

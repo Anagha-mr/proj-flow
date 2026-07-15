@@ -377,6 +377,7 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
 
       {/* Task Detail Panel */}
       <TaskDetailPanel
+        key={selectedTask?.id ?? "none"}
         task={selectedTask}
         open={panelOpen}
         onClose={() => { setPanelOpen(false); setSelectedTask(null) }}

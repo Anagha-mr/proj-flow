@@ -11,6 +11,7 @@ interface GanttViewProps {
   dependencies: Array<{ task_id: string; depends_on_task_id: string }>
   onTaskClick: (task: TaskWithDetails) => void
   onStatusChange: (taskId: string, newStatus: string) => void
+  onDependencyChange: () => void
 }
 
 const GANTT_STYLES = `
@@ -129,7 +130,7 @@ export function GanttView(props: GanttViewProps) {
   return <GanttViewInner {...props} />
 }
 
-function GanttViewInner({ tasks, projectPhases, dependencies, onTaskClick }: GanttViewProps) {
+function GanttViewInner({ tasks, projectPhases, dependencies, onTaskClick, onDependencyChange }: GanttViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
   // Keep a stable ref so event handlers always see the latest tasks list
@@ -156,6 +157,7 @@ function GanttViewInner({ tasks, projectPhases, dependencies, onTaskClick }: Gan
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let ganttInstance: any
+    let isUnmounting = false
 
     const timer = setTimeout(() => {
       import("dhtmlx-gantt").then((module) => {
@@ -220,7 +222,17 @@ function GanttViewInner({ tasks, projectPhases, dependencies, onTaskClick }: Gan
 
         // ── Init + parse ───────────────────────────────────
         ganttInstance.init(containerRef.current)
-        ganttInstance.parse(buildData(tasksRef.current, projectPhases, dependencies, ganttInstance))
+        const ganttData = buildData(tasksRef.current, projectPhases, dependencies, ganttInstance)
+        console.log("GANTT DEBUG — task ids:", ganttData.data.map((d: any) => d.id))
+        console.log("GANTT DEBUG — links:", ganttData.links)
+        try {
+          ganttInstance.parse(ganttData)
+          console.log("GANTT — all links after parse:", ganttInstance.getLinks())
+          console.log("GANTT — task '8a23cd52' exists:", ganttInstance.isTaskExists("8a23cd52-2cc6-430b-8149-eeda0e1f3a57"))
+          console.log("GANTT — task '3374c1e4' exists:", ganttInstance.isTaskExists("3374c1e4-aff2-43ae-b8d8-7f28ada6e232"))
+        } catch (err) {
+          console.error("GANTT PARSE ERROR:", err)
+        }
 
         // ── Events ─────────────────────────────────────────
         ganttInstance.attachEvent("onTaskClick", (id: string) => {
@@ -241,24 +253,48 @@ function GanttViewInner({ tasks, projectPhases, dependencies, onTaskClick }: Gan
         })
 
         ganttInstance.attachEvent("onAfterLinkAdd", (id: string, link: { source: string; target: string }) => {
-          addTaskDependency(link.source, link.target).catch((e: Error) => {
+          if (isUnmounting) return
+          addTaskDependency(link.source, link.target)
+            .then(() => onDependencyChange())
+            .catch((e: Error) => {
             toast({ title: e?.message ?? "Could not add dependency", variant: "destructive" })
-            ganttInstance.deleteLink(id)
+            // Guard: gantt.deleteLink(id) internally does getLink(id).id, which throws
+            // "Cannot read properties of undefined (reading 'id')" if the link no
+            // longer exists in Gantt's internal store (e.g. the component re-rendered
+            // and re-parsed the chart before this rejection resolved).
+            const linkExists = ganttInstance.isLinkExists
+              ? ganttInstance.isLinkExists(id)
+              : !!ganttInstance.getLink(id)
+            if (linkExists) {
+              try {
+                ganttInstance.deleteLink(id)
+              } catch (err) {
+                console.warn("Failed to remove rejected link", id, err)
+              }
+            }
           })
         })
 
         ganttInstance.attachEvent("onAfterLinkDelete", (_id: string, link: { source: string; target: string }) => {
+          if (isUnmounting) return
           removeTaskDependency(link.source, link.target).catch(() => {})
         })
       })
     }, 100)
 
     return () => {
+      isUnmounting = true
       clearTimeout(timer)
-      if (ganttInstance) ganttInstance.clearAll()
+      if (ganttInstance) {
+        try {
+          ganttInstance.clearAll()
+        } catch (err) {
+          console.warn("Gantt cleanup error (safe to ignore)", err)
+        }
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, dependencies, projectPhases])
+  }, [tasks, dependencies, projectPhases, onDependencyChange])
 
   return (
     <>
@@ -324,12 +360,16 @@ function buildData(
       readonly: true,
     }))
 
-  const links = dependencies.map((d, i) => ({
-    id: i + 1,
-    source: d.task_id,
-    target: d.depends_on_task_id,
-    type: "0",
-  }))
+  const taskIdSet = new Set(tasks.map((t) => t.id))
+
+  const links = dependencies
+    .filter((d) => taskIdSet.has(d.task_id) && taskIdSet.has(d.depends_on_task_id))
+    .map((d) => ({
+      id: `link_${d.task_id}_${d.depends_on_task_id}`,
+      source: d.task_id,
+      target: d.depends_on_task_id,
+      type: "0",
+    }))
 
   return { data: [...ganttTasks, ...milestones], links }
 }
