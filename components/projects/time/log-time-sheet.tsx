@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +39,15 @@ export function LogTimeSheet({
   const [billable, setBillable] = useState(editEntry?.is_billable ?? true)
   const [notes, setNotes] = useState(editEntry?.notes ?? "")
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setDate(editEntry?.entry_date ?? new Date().toISOString().split("T")[0])
+    setHours(editEntry ? String(editEntry.hours) : "")
+    setPhase(editEntry?.phase_tag ?? "none")
+    setBillable(editEntry?.is_billable ?? true)
+    setNotes(editEntry?.notes ?? "")
+  }, [open, editEntry?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const noRate = !currentUser.hourly_rate || currentUser.hourly_rate === 0
 
