@@ -449,7 +449,7 @@ export async function updateItemStatus(
 
   const { data: item } = await supabase
     .from("procurement_items")
-    .select("project_id")
+    .select("project_id, supplier_id" as any)
     .eq("id", itemId)
     .eq("studio_id", studioId)
     .single()
@@ -463,7 +463,24 @@ export async function updateItemStatus(
     )
 
   if (error) throw new Error(error.message)
-  revalidatePath(`/dashboard/projects/${item.project_id}`)
+
+  if (statusUpdates.client_approval_status === 'approved') {
+    try {
+      const { createOrderFromApproval } = await import("@/app/actions/orders")
+      await createOrderFromApproval(
+        supabase,
+        studioId,
+        (item as any).project_id,
+        itemId,
+        (item as any).supplier_id ?? null
+      )
+    } catch (orderErr) {
+      console.error("Failed to auto-create order for approved procurement item", itemId, orderErr)
+      throw new Error("Item was approved, but the order could not be created. Please contact support.")
+    }
+  }
+
+  revalidatePath(`/dashboard/projects/${(item as any).project_id}`)
 }
 
 // ─── reorderItems ─────────────────────────────────────────────────────────────
@@ -678,7 +695,15 @@ export async function clientApproveItem(input: {
     throw new Error("Unauthorized")
   }
 
-  const { error } = await supabase
+  // Portal token validity and studio ownership are fully verified above in
+  // application code, so this write uses a service-role client. RLS on
+  // procurement_item_status only permits authenticated studio members — an
+  // anonymous portal visitor has no auth.uid(), so on the session client this
+  // update is silently filtered to zero rows (no error, nothing persisted).
+  const { createServiceClient } = await import("@/lib/supabase/service")
+  const serviceClient = createServiceClient()
+
+  const { error } = await serviceClient
     .from("procurement_item_status")
     .update({
       client_approval_status: input.action,
@@ -687,6 +712,30 @@ export async function clientApproveItem(input: {
     .eq("item_id", input.itemId)
 
   if (error) throw new Error(error.message)
+
+  if (input.action === 'approved') {
+    try {
+      const { createOrderFromApproval } = await import("@/app/actions/orders")
+
+      const { data: fullItem } = await serviceClient
+        .from("procurement_items")
+        .select("supplier_id" as any)
+        .eq("id", input.itemId)
+        .single()
+
+      await createOrderFromApproval(
+        serviceClient,
+        client.studio_id,
+        item.project_id,
+        input.itemId,
+        (fullItem as any)?.supplier_id ?? null
+      )
+    } catch (orderErr) {
+      console.error("Failed to auto-create order for client-approved procurement item", input.itemId, orderErr)
+      throw new Error("Item was approved, but the order could not be created. Please contact support.")
+    }
+  }
+
   revalidatePath(`/dashboard/projects/${item.project_id}`)
 }
 

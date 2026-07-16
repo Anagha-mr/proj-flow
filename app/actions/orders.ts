@@ -101,23 +101,19 @@ export async function getOrderTracking(projectId: string): Promise<OrderTracking
   return mergeOrderRows((data ?? []) as Array<Record<string, unknown>>, supabase)
 }
 
-export async function createOrderTracking(input: CreateOrderInput): Promise<OrderTrackingRow> {
-  const { supabase, studioId } = await getAuthContext()
-
-  const { data: item, error: itemErr } = await supabase
-    .from("procurement_items")
-    .select("id, studio_id")
-    .eq("id", input.procurement_item_id)
-    .single()
-  if (itemErr || !item) throw new Error("Procurement item not found")
-  if (item.studio_id !== studioId) throw new Error("Unauthorized")
-
-  const { data: existing } = await (supabase.from as AnyQuery)("order_tracking")
+async function findOrderForItem(supabase: AnyQuery, procurementItemId: string) {
+  const { data } = await (supabase.from as AnyQuery)("order_tracking")
     .select("id")
-    .eq("procurement_item_id", input.procurement_item_id)
+    .eq("procurement_item_id", procurementItemId)
     .maybeSingle()
-  if (existing) throw new Error("An order is already being tracked for this item")
+  return data
+}
 
+async function insertOrderTracking(
+  supabase: AnyQuery,
+  studioId: string,
+  input: CreateOrderInput
+) {
   const { data, error } = await (supabase.from as AnyQuery)("order_tracking")
     .insert({
       studio_id: studioId,
@@ -137,9 +133,62 @@ export async function createOrderTracking(input: CreateOrderInput): Promise<Orde
     .update({ procurement_status: 'ordered' })
     .eq("item_id", input.procurement_item_id)
 
+  return data
+}
+
+export async function createOrderTracking(input: CreateOrderInput): Promise<OrderTrackingRow> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data: item, error: itemErr } = await supabase
+    .from("procurement_items")
+    .select("id, studio_id")
+    .eq("id", input.procurement_item_id)
+    .single()
+  if (itemErr || !item) throw new Error("Procurement item not found")
+  if (item.studio_id !== studioId) throw new Error("Unauthorized")
+
+  const existing = await findOrderForItem(supabase, input.procurement_item_id)
+  if (existing) throw new Error("An order is already being tracked for this item")
+
+  const data = await insertOrderTracking(supabase, studioId, input)
+
   revalidatePath(`/dashboard/projects/${input.project_id}`)
   const merged = await mergeOrderRows([data as Record<string, unknown>], supabase)
   return merged[0]
+}
+
+// ─── createOrderFromApproval ────────────────────────────────────────────────
+// Auto-creates the order_tracking record when a procurement item's
+// client_approval_status transitions to 'approved'. Called from
+// app/actions/procurement.ts on both the internal approval path and the
+// client-portal (no-session) approval path, so it takes an explicit supabase
+// client + studioId rather than resolving them via getAuthContext. No-ops if
+// an order already exists for the item, so re-approval never double-inserts.
+export async function createOrderFromApproval(
+  supabase: AnyQuery,
+  studioId: string,
+  projectId: string,
+  procurementItemId: string,
+  vendorId?: string | null
+): Promise<void> {
+  const existing = await findOrderForItem(supabase, procurementItemId)
+  if (existing) return
+
+  const { data: statusRow } = await (supabase.from as AnyQuery)("procurement_item_status")
+    .select("client_approval_status")
+    .eq("item_id", procurementItemId)
+    .single()
+  if (statusRow?.client_approval_status !== 'approved') {
+    throw new Error("Cannot create order: item is not approved")
+  }
+
+  await insertOrderTracking(supabase, studioId, {
+    project_id: projectId,
+    procurement_item_id: procurementItemId,
+    vendor_id: vendorId ?? undefined,
+  })
+
+  revalidatePath(`/dashboard/projects/${projectId}`)
 }
 
 export async function updateOrderTracking(id: string, updates: UpdateOrderInput): Promise<OrderTrackingRow> {

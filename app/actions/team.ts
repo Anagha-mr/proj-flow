@@ -704,6 +704,15 @@ export async function inviteTeamMember(
 
   const supabaseAdmin = createServiceClient()
 
+  const { data: existing } = await (supabaseAdmin.from as any)("users")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle()
+
+  if (existing) {
+    throw new Error("This email already has a Project Flow account. Contact support to link studios.")
+  }
+
   const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
     data: { studio_id: studioId, role },
   })
