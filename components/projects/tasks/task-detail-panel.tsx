@@ -265,14 +265,15 @@ export function TaskDetailPanel({
     setUploadingFile(true)
     try {
       const supabase = createClient()
-      const path = `${task!.studio_id}/tasks/${task!.id}/${Date.now()}-${file.name}`
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const path = `${task!.studio_id}/${task!.project_id}/tasks/${task!.id}/${Date.now()}_${safeName}`
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("studio-files")
+        .from("projectflow-files")
         .upload(path, file, { cacheControl: "3600", upsert: false })
 
       if (uploadError) throw uploadError
 
-      const { data: { publicUrl } } = supabase.storage.from("studio-files").getPublicUrl(uploadData.path)
+      const { data: { publicUrl } } = supabase.storage.from("projectflow-files").getPublicUrl(uploadData.path)
 
       const att = await addTaskAttachment(task!.id, publicUrl, file.name, file.type, file.size)
       setAttachments((prev) => [att, ...prev])
