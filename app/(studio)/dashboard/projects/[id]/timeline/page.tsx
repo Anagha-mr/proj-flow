@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { getProject, getStudioUsers } from "@/app/actions/projects"
+import { getProject } from "@/app/actions/projects"
 import { TimelineTab } from "@/components/projects/timeline-tab"
 
 export default async function ProjectTimelinePage({
@@ -25,7 +25,16 @@ export default async function ProjectTimelinePage({
     notFound()
   }
 
-  const studioUsers = await getStudioUsers()
+  // Assignee dropdown must only offer people who are members of this project,
+  // not every user in the studio — project.members is already scoped + joined to users.
+  const projectMembers = project.members
+    .filter((m) => m.user !== null)
+    .map((m) => ({
+      id: m.user!.id,
+      name: m.user!.name,
+      profile_photo_url: m.user!.profile_photo_url,
+      role: m.user!.role,
+    }))
 
   const projectPhases = (
     Array.isArray(project.phases)
@@ -39,7 +48,7 @@ export default async function ProjectTimelinePage({
       projectPhases={projectPhases}
       userRole={profile?.role ?? "designer"}
       currentUserId={user!.id}
-      studioUsers={studioUsers}
+      studioUsers={projectMembers}
     />
   )
 }
