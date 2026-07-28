@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { FileText, Image, File, FileImage, Download, Share2, Upload, History, Archive, Trash2, MoreVertical, ChevronDown } from "lucide-react"
+import { FileText, Image, File, FileImage, Download, Share2, Upload, History, Archive, ArchiveRestore, Trash2, MoreVertical, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { formatDistanceToNow, format } from "date-fns"
 import type { DocumentRecord, AccessLevel } from "@/app/actions/documents"
-import { archiveDocument, deleteDocument, updateDocumentAccess } from "@/app/actions/documents"
+import { archiveDocument, unarchiveDocument, deleteDocument, updateDocumentAccess } from "@/app/actions/documents"
 import { useToast } from "@/hooks/use-toast"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -72,6 +72,7 @@ export function DocumentCard({
   const { toast } = useToast()
   const [hovered, setHovered] = useState(false)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [unarchiveDialogOpen, setUnarchiveDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [accessLoading, setAccessLoading] = useState(false)
 
@@ -88,6 +89,17 @@ export function DocumentCard({
       await archiveDocument(doc.id)
       toast({ title: "Document archived" })
       setArchiveDialogOpen(false)
+      onRefresh()
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: "destructive" })
+    }
+  }
+
+  async function handleUnarchive() {
+    try {
+      await unarchiveDocument(doc.id)
+      toast({ title: "Document unarchived" })
+      setUnarchiveDialogOpen(false)
       onRefresh()
     } catch (e) {
       toast({ title: (e as Error).message, variant: "destructive" })
@@ -164,6 +176,16 @@ export function DocumentCard({
           <Archive className="w-3 h-3 mr-1" /> Archive
         </Button>
       )}
+      {canArchive && doc.version_status === "archived" && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs px-2 text-emerald-600 hover:text-emerald-700"
+          onClick={() => setUnarchiveDialogOpen(true)}
+        >
+          <ArchiveRestore className="w-3 h-3 mr-1" /> Unarchive
+        </Button>
+      )}
       {canDelete && (
         <Button
           size="sm"
@@ -236,6 +258,17 @@ export function DocumentCard({
                   </DropdownMenuItem>
                 </>
               )}
+              {canArchive && doc.version_status === "archived" && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-emerald-600"
+                    onClick={() => setUnarchiveDialogOpen(true)}
+                  >
+                    <ArchiveRestore className="w-4 h-4 mr-2" /> Unarchive
+                  </DropdownMenuItem>
+                </>
+              )}
               {canDelete && (
                 <>
                   <DropdownMenuSeparator />
@@ -303,6 +336,23 @@ export function DocumentCard({
           <DialogFooter>
             <Button variant="outline" onClick={() => setArchiveDialogOpen(false)}>Cancel</Button>
             <Button className="bg-amber-500 hover:bg-amber-600 text-white" onClick={handleArchive}>Archive</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unarchive confirm */}
+      <Dialog open={unarchiveDialogOpen} onOpenChange={setUnarchiveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unarchive Document</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Restore &ldquo;{doc.name}&rdquo; (v{doc.version_number}) from the archive? It will return to Latest Issued
+            if it was the newest version, or Superseded otherwise.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUnarchiveDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-emerald-500 hover:bg-emerald-600 text-white" onClick={handleUnarchive}>Unarchive</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

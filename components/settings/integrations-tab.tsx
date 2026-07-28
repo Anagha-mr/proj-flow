@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,10 +15,36 @@ import { updateStudioIntegrations, testWatiConnection, testResendEmail } from "@
 import { disconnectCanva } from "@/app/actions/canva"
 import type { CanvaConnectionStatus } from "@/app/actions/canva"
 
+// ─── WATI API URL Validation ────────────────────────────────
+const WATI_HOSTNAME_REGEX = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+
+function validateWatiApiUrl(url: string): string | null {
+  if (!url) return null
+  if (url.includes("@") || /https?:\/\//i.test(url) || /\s/.test(url) || !WATI_HOSTNAME_REGEX.test(url)) {
+    return "Enter just the hostname, like live-mt-server.wati.io — no https:// prefix, no email address"
+  }
+  return null
+}
+
+// ─── WhatsApp Number Validation ────────────────────────────────
+function validateWhatsappNumber(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return "WhatsApp number is required"
+  if (!trimmed.startsWith("+")) {
+    return "Enter a valid phone number with country code, e.g. +919876543210"
+  }
+  const digits = trimmed.slice(1).replace(/[\s-]/g, "")
+  if (!/^\d{10,15}$/.test(digits)) {
+    return "Enter a valid phone number with country code, e.g. +919876543210"
+  }
+  return null
+}
+
 interface IntegrationsTabProps {
   studioId: string
   initialWatiUrl: string | null
   initialWatiKey: string | null
+  initialWhatsappNumber?: string | null
   initialResendKey: string | null
   initialSendingEmail: string | null
   initialSendingEmailName: string | null
@@ -33,6 +60,7 @@ export function IntegrationsTab({
   studioId,
   initialWatiUrl,
   initialWatiKey,
+  initialWhatsappNumber,
   initialResendKey,
   initialSendingEmail,
   initialSendingEmailName,
@@ -49,13 +77,37 @@ export function IntegrationsTab({
 
   // WATI state
   const [watiUrl, setWatiUrl] = useState(initialWatiUrl ?? "")
+  const [watiUrlError, setWatiUrlError] = useState<string | null>(null)
   const [watiKey, setWatiKey] = useState(initialWatiKey ?? "")
   const [showWatiKey, setShowWatiKey] = useState(false)
+  const [whatsappNumber, setWhatsappNumber] = useState(initialWhatsappNumber ?? "")
+  const [whatsappNumberError, setWhatsappNumberError] = useState<string | null>(null)
   const [watiSaving, setWatiSaving] = useState(false)
   const [watiTesting, setWatiTesting] = useState(false)
   const [watiStatus, setWatiStatus] = useState<"connected" | "failed" | null>(
     initialWatiUrl && initialWatiKey ? "connected" : null
   )
+
+  // The settings page doesn't pass whatsapp_number down yet — load it directly
+  // so the field still pre-populates on mount/reload.
+  useEffect(() => {
+    if (initialWhatsappNumber !== undefined) return
+    let cancelled = false
+    async function loadWhatsappNumber() {
+      const supabase = createClient()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase.from as any)("studios")
+        .select("whatsapp_number")
+        .eq("id", studioId)
+        .single()
+      if (!cancelled && data?.whatsapp_number) setWhatsappNumber(data.whatsapp_number)
+    }
+    loadWhatsappNumber()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Canva state
   const [canvaConnected, setCanvaConnected] = useState(canvaStatus?.connected ?? false)
@@ -159,11 +211,23 @@ export function IntegrationsTab({
   )
 
   async function saveWati() {
+    const trimmedUrl = watiUrl.trim()
+    const urlError = validateWatiApiUrl(trimmedUrl)
+    if (urlError) {
+      setWatiUrlError(urlError)
+      return
+    }
+    const numberError = validateWhatsappNumber(whatsappNumber)
+    if (numberError) {
+      setWhatsappNumberError(numberError)
+      return
+    }
     setWatiSaving(true)
     try {
       await updateStudioIntegrations({
-        wati_api_url: watiUrl.trim() || null,
+        wati_api_url: trimmedUrl || null,
         wati_api_key: watiKey.trim() || null,
+        whatsapp_number: whatsappNumber.trim(),
       })
       setWatiStatus(watiUrl.trim() && watiKey.trim() ? "connected" : null)
       toast({ title: "WhatsApp settings saved" })
@@ -377,9 +441,17 @@ export function IntegrationsTab({
             <Input
               placeholder="live-mt-server.wati.io"
               value={watiUrl}
-              onChange={(e) => setWatiUrl(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value
+                setWatiUrl(value)
+                setWatiUrlError(validateWatiApiUrl(value.trim()))
+              }}
             />
-            <p className="text-xs text-muted-foreground">The host from your WATI dashboard (no https:// prefix).</p>
+            {watiUrlError ? (
+              <p className="text-xs text-destructive">{watiUrlError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">The host from your WATI dashboard (no https:// prefix).</p>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>WATI API Key</Label>
@@ -400,10 +472,27 @@ export function IntegrationsTab({
               </button>
             </div>
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>WhatsApp Number</Label>
+            <Input
+              placeholder="+919876543210"
+              value={whatsappNumber}
+              onChange={(e) => {
+                const value = e.target.value
+                setWhatsappNumber(value)
+                setWhatsappNumberError(validateWhatsappNumber(value))
+              }}
+            />
+            {whatsappNumberError ? (
+              <p className="text-xs text-destructive">{whatsappNumberError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Your studio&apos;s WhatsApp Business number, with country code.</p>
+            )}
+          </div>
           <div className="flex gap-2">
             <Button
               onClick={saveWati}
-              disabled={watiSaving}
+              disabled={watiSaving || !!watiUrlError || !!whatsappNumberError}
               className="bg-[#1a1a2e] hover:bg-[#2d2d4e] text-white"
             >
               {watiSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}

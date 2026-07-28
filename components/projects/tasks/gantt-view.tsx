@@ -349,16 +349,36 @@ function buildData(
     }
   })
 
-  const milestones = projectPhases
-    .filter((p) => p.end_date)
-    .map((p) => ({
-      id: `phase_${p.id}`,
-      text: p.name,
-      start_date: p.end_date,
-      duration: 0,
-      type: gantt.config.types.milestone,
-      readonly: true,
-    }))
+  const phaseBars = projectPhases
+    .filter((p) => p.start_date || p.end_date)
+    .map((p) => {
+      if (p.start_date && p.end_date) {
+        const start = new Date(p.start_date)
+        const end = new Date(p.end_date)
+        // DHTMLX end_date is exclusive — add 1 day so the bar fills through the
+        // end date, matching the convention used for task bars above.
+        end.setDate(end.getDate() + 1)
+        return {
+          id: `phase_${p.id}`,
+          text: p.name,
+          start_date: fmt(start),
+          end_date: fmt(end),
+          readonly: true,
+        }
+      }
+
+      // Only one date is known — there's nothing to compute a duration from,
+      // so show it as a point-in-time marker instead of guessing a span.
+      const point = new Date(p.start_date ?? p.end_date!)
+      return {
+        id: `phase_${p.id}`,
+        text: p.name,
+        start_date: fmt(point),
+        duration: 0,
+        type: gantt.config.types.milestone,
+        readonly: true,
+      }
+    })
 
   const taskIdSet = new Set(tasks.map((t) => t.id))
 
@@ -371,5 +391,5 @@ function buildData(
       type: "0",
     }))
 
-  return { data: [...ganttTasks, ...milestones], links }
+  return { data: [...ganttTasks, ...phaseBars], links }
 }

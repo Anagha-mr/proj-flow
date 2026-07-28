@@ -358,6 +358,84 @@ export async function archiveDocument(documentId: string): Promise<void> {
   revalidatePath(`/dashboard/projects/${doc.project_id}`)
 }
 
+// ─── unarchiveDocument ────────────────────────────────────────────────────────
+
+// Walks the previous_version_id chain in both directions to collect every
+// document that belongs to the same version group as the given document.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getVersionGroup(supabase: any, studioId: string, documentId: string): Promise<DocumentRecord[]> {
+  const group = new Map<string, DocumentRecord>()
+  const queue: string[] = [documentId]
+
+  while (queue.length) {
+    const id = queue.shift()!
+    if (group.has(id)) continue
+
+    const { data } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("id", id)
+      .eq("studio_id", studioId)
+      .single()
+
+    if (!data) continue
+    group.set(id, data as DocumentRecord)
+
+    if (data.previous_version_id) queue.push(data.previous_version_id)
+
+    const { data: children } = await supabase
+      .from("documents")
+      .select("id")
+      .eq("previous_version_id", id)
+      .eq("studio_id", studioId)
+    for (const child of children ?? []) queue.push(child.id)
+  }
+
+  return [...group.values()]
+}
+
+export async function unarchiveDocument(documentId: string): Promise<void> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("id", documentId)
+    .eq("studio_id", studioId)
+    .single()
+
+  if (!doc) throw new Error("Document not found")
+  if (doc.version_status !== "archived") throw new Error("Document is not archived")
+
+  const group = await getVersionGroup(supabase, studioId, documentId)
+  const hasNewerVersion = group.some((d) => d.previous_version_id === documentId)
+
+  let newStatus: VersionStatus
+
+  if (!hasNewerVersion) {
+    // This was the newest version in its group — restoring it to latest_issued
+    // is only safe if no other document in the group currently holds that status.
+    const conflict = group.find((d) => d.id !== documentId && d.version_status === "latest_issued")
+    if (conflict) {
+      throw new Error(
+        `Cannot restore "${doc.name}" (v${doc.version_number}) to Latest Issued — "${conflict.name}" (v${conflict.version_number}) already holds that status for this document group.`
+      )
+    }
+    newStatus = "latest_issued"
+  } else {
+    newStatus = "superseded"
+  }
+
+  const { error } = await supabase
+    .from("documents")
+    .update({ version_status: newStatus })
+    .eq("id", documentId)
+    .eq("studio_id", studioId)
+
+  if (error) throw error
+  revalidatePath(`/dashboard/projects/${doc.project_id}`)
+}
+
 // ─── deleteDocument ───────────────────────────────────────────────────────────
 
 export async function deleteDocument(documentId: string): Promise<void> {

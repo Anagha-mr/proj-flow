@@ -3,9 +3,31 @@
 import { getAuthContext } from "./_auth"
 import { createServiceClient } from "@/lib/supabase/service"
 
+const WATI_HOSTNAME_REGEX = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+
+function validateWatiApiUrl(url: string): string | null {
+  if (url.includes("@") || /https?:\/\//i.test(url) || /\s/.test(url) || !WATI_HOSTNAME_REGEX.test(url)) {
+    return "Enter just the hostname, like live-mt-server.wati.io — no https:// prefix, no email address"
+  }
+  return null
+}
+
+function validateWhatsappNumber(value: string): string | null {
+  if (!value) return "WhatsApp number is required"
+  if (!value.startsWith("+")) {
+    return "Enter a valid phone number with country code, e.g. +919876543210"
+  }
+  const digits = value.slice(1).replace(/[\s-]/g, "")
+  if (!/^\d{10,15}$/.test(digits)) {
+    return "Enter a valid phone number with country code, e.g. +919876543210"
+  }
+  return null
+}
+
 export async function updateStudioIntegrations(payload: {
   wati_api_url?: string | null
   wati_api_key?: string | null
+  whatsapp_number?: string | null
   resend_api_key?: string | null
   sending_email?: string | null
   sending_email_name?: string | null
@@ -20,8 +42,21 @@ export async function updateStudioIntegrations(payload: {
   if (role !== "owner") throw new Error("Only owners can update integrations")
 
   const update: Record<string, unknown> = {}
-  if (payload.wati_api_url !== undefined) update.wati_api_url = payload.wati_api_url
+  if (payload.wati_api_url !== undefined) {
+    const trimmed = payload.wati_api_url?.trim() || null
+    if (trimmed) {
+      const error = validateWatiApiUrl(trimmed)
+      if (error) throw new Error(error)
+    }
+    update.wati_api_url = trimmed
+  }
   if (payload.wati_api_key !== undefined) update.wati_api_key = payload.wati_api_key
+  if (payload.whatsapp_number !== undefined) {
+    const trimmed = payload.whatsapp_number?.trim() ?? ""
+    const error = validateWhatsappNumber(trimmed)
+    if (error) throw new Error(error)
+    update.whatsapp_number = trimmed
+  }
   if (payload.resend_api_key !== undefined) update.resend_api_key = payload.resend_api_key
   if (payload.sending_email !== undefined) update.sending_email = payload.sending_email
   if (payload.sending_email_name !== undefined) update.sending_email_name = payload.sending_email_name
