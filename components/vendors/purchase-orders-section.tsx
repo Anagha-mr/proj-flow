@@ -33,6 +33,7 @@ export function PurchaseOrdersSection({ initialPOs, vendors, projects, userRole 
   const [pos, setPOs] = useState<PurchaseOrder[]>(initialPOs)
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
+  const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null)
   const [projectFilter, setProjectFilter] = useState("")
   const [vendorFilter, setVendorFilter] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
@@ -47,13 +48,22 @@ export function PurchaseOrdersSection({ initialPOs, vendors, projects, userRole 
     return true
   })
 
-  function handlePOCreated(po: PurchaseOrder) {
-    setPOs((prev) => [po, ...prev])
+  function handlePOSaved(po: PurchaseOrder) {
+    setPOs((prev) => {
+      const exists = prev.find((p) => p.id === po.id)
+      return exists ? prev.map((p) => p.id === po.id ? po : p) : [po, ...prev]
+    })
   }
 
   function handlePOUpdated(updated: PurchaseOrder) {
     setPOs((prev) => prev.map((p) => p.id === updated.id ? updated : p))
     setSelectedPO(updated)
+  }
+
+  function handleEditPO(po: PurchaseOrder) {
+    setSelectedPO(null)
+    setEditingPO(po)
+    setEditorOpen(true)
   }
 
   async function handleDelete(po: PurchaseOrder) {
@@ -72,7 +82,7 @@ export function PurchaseOrdersSection({ initialPOs, vendors, projects, userRole 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Purchase Orders</h2>
         <PermissionGate action="manage_purchase_orders">
-          <Button size="sm" onClick={() => setEditorOpen(true)} className="bg-[#e94560] hover:bg-[#c73652]">
+          <Button size="sm" onClick={() => { setEditingPO(null); setEditorOpen(true) }} className="bg-[#e94560] hover:bg-[#c73652]">
             <Plus className="w-4 h-4 mr-1" /> Create PO
           </Button>
         </PermissionGate>
@@ -174,14 +184,16 @@ export function PurchaseOrdersSection({ initialPOs, vendors, projects, userRole 
         userRole={userRole}
         onClose={() => setSelectedPO(null)}
         onUpdated={handlePOUpdated}
+        onEdit={handleEditPO}
       />
 
       <POEditorSheet
         open={editorOpen}
-        onOpenChange={setEditorOpen}
+        onOpenChange={(open) => { setEditorOpen(open); if (!open) setEditingPO(null) }}
         vendors={vendors}
         projects={projects}
-        onSaved={handlePOCreated}
+        po={editingPO}
+        onSaved={handlePOSaved}
       />
     </div>
   )

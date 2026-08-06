@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Trash2, Plus } from "lucide-react"
-import { createPurchaseOrder } from "@/app/actions/purchase-orders"
+import { createPurchaseOrder, updatePurchaseOrder } from "@/app/actions/purchase-orders"
 import type { Vendor } from "@/app/actions/vendors"
 import type { PurchaseOrder, POLineItem } from "@/app/actions/purchase-orders"
 import { formatCurrency } from "@/components/vendors/vendor-utils"
@@ -23,11 +23,24 @@ interface POEditorSheetProps {
   onOpenChange: (open: boolean) => void
   vendors: Vendor[]
   projects: Array<{ id: string; name: string; address_line1: string | null }>
+  po?: PurchaseOrder | null
   onSaved: (po: PurchaseOrder) => void
 }
 
 function emptyLine(): LineItemForm {
   return { procurement_item_id: null, name: '', product_code: null, quantity: 1, unit: null, unit_price: 0, gst_rate: 18 }
+}
+
+function linesFromPO(po: PurchaseOrder): LineItemForm[] {
+  return po.line_items.map((item) => ({
+    procurement_item_id: item.procurement_item_id,
+    name: item.name,
+    product_code: item.product_code,
+    quantity: item.quantity,
+    unit: item.unit,
+    unit_price: item.unit_price,
+    gst_rate: item.gst_rate,
+  }))
 }
 
 function computeTotals(lines: LineItemForm[]) {
@@ -42,8 +55,9 @@ function computeTotals(lines: LineItemForm[]) {
   return { subtotal, gstTotal, grandTotal: subtotal + gstTotal }
 }
 
-export function POEditorSheet({ open, onOpenChange, vendors, projects, onSaved }: POEditorSheetProps) {
+export function POEditorSheet({ open, onOpenChange, vendors, projects, po, onSaved }: POEditorSheetProps) {
   const { toast } = useToast()
+  const isEditMode = !!po
   const [saving, setSaving] = useState(false)
   const [projectId, setProjectId] = useState("")
   const [vendorId, setVendorId] = useState("")
@@ -56,11 +70,42 @@ export function POEditorSheet({ open, onOpenChange, vendors, projects, onSaved }
   const [specialInstructions, setSpecialInstructions] = useState("")
   const [lines, setLines] = useState<LineItemForm[]>([emptyLine()])
 
-  // Auto-fill delivery address from project
+  // Reset/populate form whenever the sheet opens, so create mode starts blank
+  // and edit mode always reflects the PO passed in (no stale data across opens).
   useEffect(() => {
+    if (!open) return
+    if (po) {
+      setProjectId(po.project_id)
+      setVendorId(po.vendor_id)
+      setDeliveryAddress(po.delivery_address ?? "")
+      setExpectedDelivery(po.expected_delivery_date ?? "")
+      setDepositAmount(po.payment_terms?.deposit_amount != null ? String(po.payment_terms.deposit_amount) : "")
+      setDepositDate(po.payment_terms?.deposit_due_date ?? "")
+      setBalanceAmount(po.payment_terms?.balance_amount != null ? String(po.payment_terms.balance_amount) : "")
+      setBalanceDate(po.payment_terms?.balance_due_date ?? "")
+      setSpecialInstructions(po.special_instructions ?? "")
+      setLines(linesFromPO(po))
+    } else {
+      setProjectId("")
+      setVendorId("")
+      setDeliveryAddress("")
+      setExpectedDelivery("")
+      setDepositAmount("")
+      setDepositDate("")
+      setBalanceAmount("")
+      setBalanceDate("")
+      setSpecialInstructions("")
+      setLines([emptyLine()])
+    }
+  }, [open, po])
+
+  // Auto-fill delivery address from project (create mode only — editing an
+  // existing PO shouldn't clobber its saved delivery address on mount)
+  useEffect(() => {
+    if (isEditMode) return
     const project = projects.find((p) => p.id === projectId)
     if (project?.address_line1) setDeliveryAddress(project.address_line1)
-  }, [projectId, projects])
+  }, [projectId, projects, isEditMode])
 
   const { subtotal, gstTotal, grandTotal } = computeTotals(lines)
 
@@ -81,23 +126,33 @@ export function POEditorSheet({ open, onOpenChange, vendors, projects, onSaved }
 
     setSaving(true)
     try {
-      const po = await createPurchaseOrder({
-        project_id: projectId,
-        vendor_id: vendorId,
-        line_items: lines.filter((l) => l.name.trim()),
-        delivery_address: deliveryAddress || undefined,
-        expected_delivery_date: expectedDelivery || undefined,
-        payment_terms: {
-          deposit_amount: depositAmount ? Number(depositAmount) : undefined,
-          deposit_due_date: depositDate || undefined,
-          balance_amount: balanceAmount ? Number(balanceAmount) : undefined,
-          balance_due_date: balanceDate || undefined,
-        },
-        special_instructions: specialInstructions || undefined,
-      })
-      onSaved(po)
+      const paymentTerms = {
+        deposit_amount: depositAmount ? Number(depositAmount) : undefined,
+        deposit_due_date: depositDate || undefined,
+        balance_amount: balanceAmount ? Number(balanceAmount) : undefined,
+        balance_due_date: balanceDate || undefined,
+      }
+      const saved = po
+        ? await updatePurchaseOrder(po.id, {
+            vendor_id: vendorId,
+            line_items: lines.filter((l) => l.name.trim()),
+            delivery_address: deliveryAddress || undefined,
+            expected_delivery_date: expectedDelivery || undefined,
+            payment_terms: paymentTerms,
+            special_instructions: specialInstructions || undefined,
+          })
+        : await createPurchaseOrder({
+            project_id: projectId,
+            vendor_id: vendorId,
+            line_items: lines.filter((l) => l.name.trim()),
+            delivery_address: deliveryAddress || undefined,
+            expected_delivery_date: expectedDelivery || undefined,
+            payment_terms: paymentTerms,
+            special_instructions: specialInstructions || undefined,
+          })
+      onSaved(saved)
       onOpenChange(false)
-      toast({ title: "Purchase order created" })
+      toast({ title: po ? "Purchase order updated" : "Purchase order created" })
     } catch (err) {
       toast({ title: String(err), variant: "destructive" })
     } finally {
@@ -109,7 +164,7 @@ export function POEditorSheet({ open, onOpenChange, vendors, projects, onSaved }
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-[640px] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Create Purchase Order</SheetTitle>
+          <SheetTitle>{isEditMode ? "Edit Purchase Order" : "Create Purchase Order"}</SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-5 mt-6">
@@ -119,7 +174,7 @@ export function POEditorSheet({ open, onOpenChange, vendors, projects, onSaved }
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label>Project <span className="text-red-500">*</span></Label>
-                <Select value={projectId} onValueChange={setProjectId}>
+                <Select value={projectId} onValueChange={setProjectId} disabled={isEditMode}>
                   <SelectTrigger><SelectValue placeholder="Select project" /></SelectTrigger>
                   <SelectContent>
                     {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -131,7 +186,7 @@ export function POEditorSheet({ open, onOpenChange, vendors, projects, onSaved }
                 <Select value={vendorId} onValueChange={setVendorId}>
                   <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
                   <SelectContent>
-                    {vendors.filter((v) => v.is_active).map((v) => (
+                    {vendors.filter((v) => v.is_active || v.id === vendorId).map((v) => (
                       <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -245,7 +300,7 @@ export function POEditorSheet({ open, onOpenChange, vendors, projects, onSaved }
 
         <div className="flex gap-3 mt-8">
           <Button onClick={handleSave} disabled={saving} className="bg-[#e94560] hover:bg-[#c73652] flex-1">
-            {saving ? "Saving…" : "Create Purchase Order"}
+            {saving ? "Saving…" : isEditMode ? "Save Changes" : "Create Purchase Order"}
           </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
         </div>

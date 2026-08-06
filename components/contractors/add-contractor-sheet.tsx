@@ -6,18 +6,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { createContractor, updateContractor } from "@/app/actions/contractors"
+import { createContractor, updateContractor, assignContractorToProject } from "@/app/actions/contractors"
 import type { Contractor } from "@/app/actions/contractors"
 
 interface AddContractorSheetProps {
   open: boolean
   onOpenChange: (v: boolean) => void
   editContractor?: Contractor | null
+  /** When set, a newly created contractor is immediately linked to this project. */
+  projectId?: string
   onCreated?: (c: Contractor) => void
   onUpdated?: () => void
 }
 
-export function AddContractorSheet({ open, onOpenChange, editContractor, onCreated, onUpdated }: AddContractorSheetProps) {
+export function AddContractorSheet({ open, onOpenChange, editContractor, projectId, onCreated, onUpdated }: AddContractorSheetProps) {
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
 
@@ -70,6 +72,9 @@ export function AddContractorSheet({ open, onOpenChange, editContractor, onCreat
           siteSupervisorName: supervisorName || undefined,
           siteSupervisorPhone: supervisorPhone || undefined,
         })
+        if (projectId) {
+          await assignContractorToProject(created.id, projectId)
+        }
         onCreated?.(created)
         toast({ title: "Contractor added" })
       }

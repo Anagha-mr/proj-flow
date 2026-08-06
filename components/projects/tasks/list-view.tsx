@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { updateTask } from "@/app/actions/tasks"
+import { updateTask, getSubtasks } from "@/app/actions/tasks"
 import type { TaskWithDetails } from "@/app/actions/tasks"
 
 type PhaseItem = { id: string; name: string; color: string }
@@ -61,9 +61,23 @@ interface RowProps {
   onClick: () => void
   onStatusChange: (id: string, status: string) => void
   onTitleSave: (id: string, title: string) => void
+  isSubtask?: boolean
+  hasSubtasks?: boolean
+  expanded?: boolean
+  onToggleExpand?: () => void
 }
 
-function TaskRow({ task, projectPhases, onClick, onStatusChange, onTitleSave }: RowProps) {
+function TaskRow({
+  task,
+  projectPhases,
+  onClick,
+  onStatusChange,
+  onTitleSave,
+  isSubtask,
+  hasSubtasks,
+  expanded,
+  onToggleExpand,
+}: RowProps) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [title, setTitle] = useState(task.title)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -88,11 +102,41 @@ function TaskRow({ task, projectPhases, onClick, onStatusChange, onTitleSave }: 
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 hover:bg-accent/30 rounded group border-b border-border/40 last:border-b-0 text-sm">
+    <div
+      className={`flex items-center gap-2 py-2 hover:bg-accent/30 rounded group border-b border-border/40 last:border-b-0 text-sm ${
+        isSubtask ? "pl-9 pr-3 py-1.5 text-muted-foreground" : "px-3"
+      }`}
+    >
+      {/* Expand/collapse toggle (parent rows with subtasks only) */}
+      {!isSubtask && (
+        <div className="w-4 shrink-0 flex items-center justify-center">
+          {hasSubtasks && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleExpand?.()
+              }}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label={expanded ? "Collapse subtasks" : "Expand subtasks"}
+            >
+              {expanded ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Checkbox */}
       <Checkbox
         checked={task.status === "done"}
-        onCheckedChange={(checked) => onStatusChange(task.id, checked ? "done" : "todo")}
+        disabled={isSubtask}
+        onCheckedChange={
+          isSubtask ? undefined : (checked) => onStatusChange(task.id, checked ? "done" : "todo")
+        }
         className="shrink-0"
       />
 
@@ -115,8 +159,8 @@ function TaskRow({ task, projectPhases, onClick, onStatusChange, onTitleSave }: 
           <button
             className={`text-left w-full truncate ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}
             onClick={() => onClick()}
-            onDoubleClick={() => setEditingTitle(true)}
-            title="Click to open, double-click to edit"
+            onDoubleClick={() => !isSubtask && setEditingTitle(true)}
+            title={isSubtask ? "Click to open" : "Click to open, double-click to edit"}
           >
             {task.title}
           </button>
@@ -194,6 +238,10 @@ function GroupSection({
   onTitleSave,
   onCreateTask,
   groupBy,
+  expandedTaskIds,
+  subtasksByParent,
+  loadingSubtaskIds,
+  onToggleExpand,
 }: {
   groupKey: string
   tasks: TaskWithDetails[]
@@ -204,6 +252,10 @@ function GroupSection({
   onTitleSave: (id: string, title: string) => void
   onCreateTask: (title: string, groupKey: string) => Promise<void>
   groupBy: string
+  expandedTaskIds: Set<string>
+  subtasksByParent: Record<string, TaskWithDetails[]>
+  loadingSubtaskIds: Set<string>
+  onToggleExpand: (taskId: string) => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const [quickTitle, setQuickTitle] = useState("")
@@ -239,6 +291,7 @@ function GroupSection({
           {/* Column headers */}
           <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
             <div className="w-4 shrink-0" />
+            <div className="w-4 shrink-0" />
             <div className="flex-1">Task</div>
             <div className="w-28 shrink-0 hidden sm:block">Phase</div>
             <div className="w-14 shrink-0 hidden md:block">Who</div>
@@ -248,16 +301,42 @@ function GroupSection({
             <div className="w-16 shrink-0 hidden lg:block" />
           </div>
 
-          {tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              projectPhases={projectPhases}
-              onClick={() => onTaskClick(task)}
-              onStatusChange={onStatusChange}
-              onTitleSave={onTitleSave}
-            />
-          ))}
+          {tasks.map((task) => {
+            const hasSubtasks = task.subtask_count > 0
+            const expanded = expandedTaskIds.has(task.id)
+            return (
+              <div key={task.id}>
+                <TaskRow
+                  task={task}
+                  projectPhases={projectPhases}
+                  onClick={() => onTaskClick(task)}
+                  onStatusChange={onStatusChange}
+                  onTitleSave={onTitleSave}
+                  hasSubtasks={hasSubtasks}
+                  expanded={expanded}
+                  onToggleExpand={() => onToggleExpand(task.id)}
+                />
+                {expanded && (
+                  <div>
+                    {loadingSubtaskIds.has(task.id) && (
+                      <div className="pl-9 py-1.5 text-xs text-muted-foreground">Loading subtasks…</div>
+                    )}
+                    {(subtasksByParent[task.id] ?? []).map((sub) => (
+                      <TaskRow
+                        key={sub.id}
+                        task={sub}
+                        projectPhases={projectPhases}
+                        onClick={() => onTaskClick(sub)}
+                        onStatusChange={onStatusChange}
+                        onTitleSave={onTitleSave}
+                        isSubtask
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           {/* Quick add row */}
           <div className="flex items-center gap-2 px-3 py-1 mt-1">
@@ -311,6 +390,37 @@ export function ListView({
   onCreateTask,
 }: ListViewProps) {
   const { toast } = useToast()
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set())
+  const [subtasksByParent, setSubtasksByParent] = useState<Record<string, TaskWithDetails[]>>({})
+  const [loadingSubtaskIds, setLoadingSubtaskIds] = useState<Set<string>>(new Set())
+
+  async function handleToggleExpand(taskId: string) {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) {
+        next.delete(taskId)
+      } else {
+        next.add(taskId)
+      }
+      return next
+    })
+
+    if (subtasksByParent[taskId]) return
+
+    setLoadingSubtaskIds((prev) => new Set(prev).add(taskId))
+    try {
+      const subs = await getSubtasks(taskId)
+      setSubtasksByParent((prev) => ({ ...prev, [taskId]: subs }))
+    } catch {
+      toast({ title: "Failed to load subtasks", variant: "destructive" })
+    } finally {
+      setLoadingSubtaskIds((prev) => {
+        const next = new Set(prev)
+        next.delete(taskId)
+        return next
+      })
+    }
+  }
 
   // Build groups
   const groupMap = new Map<string, TaskWithDetails[]>()
@@ -385,6 +495,10 @@ export function ListView({
           onTitleSave={handleTitleSave}
           onCreateTask={handleCreateInGroup}
           groupBy={groupBy}
+          expandedTaskIds={expandedTaskIds}
+          subtasksByParent={subtasksByParent}
+          loadingSubtaskIds={loadingSubtaskIds}
+          onToggleExpand={handleToggleExpand}
         />
       ))}
     </div>

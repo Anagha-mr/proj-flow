@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +54,29 @@ export function AddEditVendorSheet({ open, onOpenChange, vendor, userRole, onSav
     type: 'furniture',
     preferred_categories: [],
   })
+
+  useEffect(() => {
+    if (!open) return
+    setForm(vendor ? {
+      name: vendor.name,
+      type: vendor.type,
+      type_custom: vendor.type_custom,
+      contact_name: vendor.contact_name,
+      phone: vendor.phone,
+      email: vendor.email,
+      whatsapp_number: vendor.whatsapp_number,
+      showroom_address: vendor.showroom_address,
+      gstin: vendor.gstin,
+      bank_details: vendor.bank_details,
+      default_lead_time_days: vendor.default_lead_time_days,
+      notes: vendor.notes,
+      preferred_categories: vendor.preferred_categories,
+    } : {
+      type: 'furniture',
+      preferred_categories: [],
+    })
+    setBankOpen(false)
+  }, [open, vendor])
 
   const isOwner = userRole === 'owner'
 

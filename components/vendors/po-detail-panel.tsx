@@ -4,21 +4,25 @@ import { useState } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Copy } from "lucide-react"
+import { PermissionGate } from "@/components/PermissionGate"
+import { Copy, Pencil } from "lucide-react"
 import type { PurchaseOrder } from "@/app/actions/purchase-orders"
 import { approvePurchaseOrder, rejectPurchaseOrder, sendPurchaseOrder } from "@/app/actions/purchase-orders"
 import { PO_STATUS_BADGE, formatCurrency } from "@/components/vendors/vendor-utils"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
 
+const EDITABLE_STATUSES = ['draft', 'pending_approval']
+
 interface PODetailPanelProps {
   po: PurchaseOrder | null
   userRole: string
   onClose: () => void
   onUpdated: (po: PurchaseOrder) => void
+  onEdit: (po: PurchaseOrder) => void
 }
 
-export function PODetailPanel({ po, userRole, onClose, onUpdated }: PODetailPanelProps) {
+export function PODetailPanel({ po, userRole, onClose, onUpdated, onEdit }: PODetailPanelProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState("")
@@ -196,6 +200,13 @@ export function PODetailPanel({ po, userRole, onClose, onUpdated }: PODetailPane
 
             {/* Footer actions */}
             <div className="flex flex-wrap gap-2 mt-6">
+              {EDITABLE_STATUSES.includes(po.status) && (
+                <PermissionGate action="manage_purchase_orders">
+                  <Button size="sm" variant="outline" onClick={() => onEdit(po)} disabled={!!loading}>
+                    <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                  </Button>
+                </PermissionGate>
+              )}
               {isOwner && po.status === 'pending_approval' && (
                 <>
                   <Button size="sm" onClick={handleApprove} disabled={!!loading} className="bg-green-600 hover:bg-green-700">
