@@ -33,6 +33,15 @@ export default async function ProjectRfiPage({
   const studioUsers = await getStudioUsers()
   const currentUserName = studioUsers.find((u) => u.id === user.id)?.name ?? profile?.name ?? ""
 
+  // Assigned To dropdown must only offer people who are members of this project,
+  // not every user in the studio — project.members is already scoped + joined to users.
+  const projectMembers = project.members
+    .filter((m) => m.user !== null)
+    .map((m) => ({
+      id: m.user!.id,
+      name: m.user!.name,
+    }))
+
   const [initialRfis, projectContractors, projectDocuments] = await Promise.all([
     getRfis(id).catch(() => []),
     getProjectContractors(id).catch(() => []),
@@ -46,6 +55,7 @@ export default async function ProjectRfiPage({
       currentUser={{ id: user.id, name: currentUserName, role: profile?.role ?? "designer" }}
       projectDocuments={projectDocuments.map((d) => ({ id: d.id, name: d.name }))}
       projectContractors={projectContractors}
+      projectMembers={projectMembers}
     />
   )
 }

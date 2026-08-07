@@ -47,6 +47,7 @@ export interface RFIWithAnnotations {
   responded_by_id: string | null
   responded_at: string | null
   escalated_at: string | null
+  assigned_to_id: string | null
   created_at: string
   updated_at: string
   document?: { id: string; name: string; file_url: string }
@@ -72,6 +73,7 @@ export interface RFI {
   responded_by_id: string | null
   responded_at: string | null
   escalated_at: string | null
+  assigned_to_id: string | null
   created_at: string
   updated_at: string
   contractor?: { company_name: string; contact_name: string }
@@ -103,6 +105,21 @@ async function generateRfiRefNumber(
 
   const seq = String((count ?? 0) + 1).padStart(3, "0")
   return `RFI-${projectCode}-${seq}`
+}
+
+async function getProjectLeadUserId(
+  projectId: string,
+  supabase: SupabaseClient
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId)
+    .eq("project_role", "project_lead")
+    .limit(1)
+    .maybeSingle()
+
+  return data?.user_id ?? null
 }
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -374,6 +391,7 @@ export async function createAnnotatedRFI(input: {
   spaceTag?: string
   contractorId?: string
   responseDeadlineHours?: number
+  assignedToId?: string
 }): Promise<RFIWithAnnotations> {
   const { supabase, studioId, userId } = await getAuthContext()
 
@@ -405,6 +423,7 @@ export async function createAnnotatedRFI(input: {
       status: 'open',
       response_deadline: responseDeadline,
       annotation_data: input.annotationData,
+      assigned_to_id: input.assignedToId ?? null,
     })
     .select("*")
     .single()
@@ -416,6 +435,15 @@ export async function createAnnotatedRFI(input: {
     notifyRFICreated(data.id).catch(() => {})
   } catch {
     // fire-and-forget
+  }
+
+  if (data.assigned_to_id) {
+    try {
+      const { notifyRFIAssigned } = await import("./notifications")
+      notifyRFIAssigned(data.id, data.assigned_to_id).catch(() => {})
+    } catch {
+      // fire-and-forget
+    }
   }
 
   revalidatePath(`/dashboard/projects/${input.projectId}/rfi`)
@@ -468,6 +496,9 @@ export async function createAnnotatedRFIFromContractor(input: {
   const refNumber = await generateRfiRefNumber(input.projectId, supabase)
   const responseDeadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
 
+  // Contractor never picks an assignee — auto-assign to the project lead.
+  const assignedToId = await getProjectLeadUserId(input.projectId, supabase)
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.from as any)("rfis")
     .insert({
@@ -484,6 +515,7 @@ export async function createAnnotatedRFIFromContractor(input: {
       status: 'open',
       response_deadline: responseDeadline,
       annotation_data: input.annotationData,
+      assigned_to_id: assignedToId,
     })
     .select("id, ref_number")
     .single()
@@ -495,6 +527,15 @@ export async function createAnnotatedRFIFromContractor(input: {
     notifyRFIReceivedFromContractor(data.id).catch(() => {})
   } catch {
     // fire-and-forget
+  }
+
+  if (assignedToId) {
+    try {
+      const { notifyRFIAssigned } = await import("./notifications")
+      notifyRFIAssigned(data.id, assignedToId).catch(() => {})
+    } catch {
+      // fire-and-forget
+    }
   }
 
   return { rfiId: data.id, refNumber: data.ref_number }

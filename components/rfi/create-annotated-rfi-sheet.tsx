@@ -12,10 +12,16 @@ import { PDFAnnotationViewer } from "./pdf-annotation-viewer"
 import type { PDFAnnotationViewerRef } from "./pdf-annotation-viewer"
 import type { RFIWithAnnotations } from "@/app/actions/rfis"
 
+interface ProjectMemberOption {
+  id: string
+  name: string
+}
+
 interface CreateAnnotatedRFISheetProps {
   open: boolean
   onOpenChange: (v: boolean) => void
   project: { id: string; name: string }
+  projectMembers: ProjectMemberOption[]
   onCreated: (rfi: RFIWithAnnotations) => void
 }
 
@@ -30,6 +36,7 @@ export function CreateAnnotatedRFISheet({
   open,
   onOpenChange,
   project,
+  projectMembers,
   onCreated,
 }: CreateAnnotatedRFISheetProps) {
   const { toast } = useToast()
@@ -38,6 +45,7 @@ export function CreateAnnotatedRFISheet({
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [spaceTag, setSpaceTag] = useState("")
+  const [assignedToId, setAssignedToId] = useState("")
   const [selectedDocId, setSelectedDocId] = useState("")
   const [selectedDoc, setSelectedDoc] = useState<DocumentOption | null>(null)
   const [documents, setDocuments] = useState<DocumentOption[]>([])
@@ -65,6 +73,7 @@ export function CreateAnnotatedRFISheet({
     setTitle("")
     setDescription("")
     setSpaceTag("")
+    setAssignedToId("")
     setSelectedDocId("")
     setSelectedDoc(null)
     setAnnotationError("")
@@ -77,6 +86,10 @@ export function CreateAnnotatedRFISheet({
     }
     if (!selectedDocId) {
       toast({ title: "Please select a drawing", variant: "destructive" })
+      return
+    }
+    if (!assignedToId) {
+      toast({ title: "Please select who this RFI is assigned to", variant: "destructive" })
       return
     }
     if (!viewerRef.current) return
@@ -97,6 +110,7 @@ export function CreateAnnotatedRFISheet({
         description: description.trim(),
         annotationData,
         spaceTag: spaceTag.trim() || undefined,
+        assignedToId,
       })
       onCreated(created)
       toast({ title: "RFI submitted" })
@@ -162,6 +176,21 @@ export function CreateAnnotatedRFISheet({
               placeholder="Kitchen / Living Room / etc."
               className="focus-visible:ring-[#e94560]"
             />
+          </div>
+
+          {/* Assigned To */}
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Assigned To *</label>
+            <Select value={assignedToId} onValueChange={setAssignedToId}>
+              <SelectTrigger className="focus:ring-[#e94560]">
+                <SelectValue placeholder="Select team member…" />
+              </SelectTrigger>
+              <SelectContent>
+                {projectMembers.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Description */}

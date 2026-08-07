@@ -25,6 +25,7 @@ interface RfiTabProps {
   currentUser: { id: string; name: string; role: string }
   projectDocuments: Array<{ id: string; name: string }>
   projectContractors: Contractor[]
+  projectMembers: Array<{ id: string; name: string }>
 }
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
@@ -37,7 +38,7 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 
 const SKELETON_COUNT = 3
 
-export function RfiTab({ project, initialRfis, currentUser, projectDocuments, projectContractors }: RfiTabProps) {
+export function RfiTab({ project, initialRfis, currentUser, projectDocuments, projectContractors, projectMembers }: RfiTabProps) {
   const { toast } = useToast()
   const [rfis, setRfis] = useState<RFI[]>(initialRfis)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
@@ -187,6 +188,7 @@ export function RfiTab({ project, initialRfis, currentUser, projectDocuments, pr
         open={annotatedRfiOpen}
         onOpenChange={setAnnotatedRfiOpen}
         project={project}
+        projectMembers={projectMembers}
         onCreated={(r) => setRfis((prev) => [r as unknown as RFI, ...prev])}
       />
 

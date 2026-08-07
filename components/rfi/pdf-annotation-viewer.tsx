@@ -81,6 +81,11 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
     useEffect(() => { strokeColorRef.current = strokeColor }, [strokeColor])
     useEffect(() => { strokeWidthRef.current = strokeWidth }, [strokeWidth])
 
+    // Undo history — JSON snapshots of canvas state, scoped to this editing session
+    const historyRef = useRef<string[]>([])
+    const isRestoringRef = useRef(false)
+    const HISTORY_LIMIT = 50
+
     // ── Expose getAnnotationData via ref ──────────────────────────────────────
 
     useImperativeHandle(ref, () => ({
@@ -219,10 +224,88 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
       canvas.renderAll()
     }, [])
 
+    // ── Undo history — snapshot before/after mutating actions ─────────────────
+    // selectable/evented are included explicitly since fabric's default toJSON()
+    // omits them — without this, undo would make locked shapes selectable again.
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pushHistory = useCallback((canvas: any) => {
+      if (!canvas || isRestoringRef.current) return
+      const snapshot = JSON.stringify(canvas.toJSON(["selectable", "evented"]))
+      historyRef.current.push(snapshot)
+      if (historyRef.current.length > HISTORY_LIMIT) historyRef.current.shift()
+    }, [])
+
+    const undo = useCallback(() => {
+      const canvas = fabricInstanceRef.current
+      if (!canvas || historyRef.current.length <= 1) return
+
+      isRestoringRef.current = true
+      historyRef.current.pop()
+      const prevState = historyRef.current[historyRef.current.length - 1]
+      canvas.loadFromJSON(prevState, () => {
+        canvas.renderAll()
+        isRestoringRef.current = false
+      })
+    }, [])
+
+    const deleteSelected = useCallback(() => {
+      const canvas = fabricInstanceRef.current
+      if (!canvas) return
+      const activeObj = canvas.getActiveObject()
+      if (!activeObj) return
+
+      if (activeObj.type === "activeSelection") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const objects: any[] = activeObj.getObjects ? activeObj.getObjects() : []
+        canvas.discardActiveObject()
+        objects.forEach((obj) => canvas.remove(obj))
+      } else {
+        canvas.remove(activeObj)
+      }
+      canvas.requestRenderAll()
+    }, [])
+
+    // ── Keyboard shortcuts — Delete/Backspace to remove, Cmd/Ctrl+Z to undo ────
+    // Scoped to skip when the user is typing in any text field (including a
+    // fabric IText in edit mode, which focuses its own hidden <textarea>) so
+    // this never hijacks an unrelated input elsewhere on the page.
+
+    useEffect(() => {
+      if (mode === "view") return
+
+      function isTypingInField(): boolean {
+        const el = document.activeElement as HTMLElement | null
+        if (!el) return false
+        return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable
+      }
+
+      function handleKeyDown(e: KeyboardEvent) {
+        const canvas = fabricInstanceRef.current
+        if (!canvas || isTypingInField()) return
+
+        const isUndo = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z"
+        if (isUndo) {
+          e.preventDefault()
+          undo()
+          return
+        }
+
+        if (e.key === "Delete" || e.key === "Backspace") {
+          if (!canvas.getActiveObject()) return
+          e.preventDefault()
+          deleteSelected()
+        }
+      }
+
+      document.addEventListener("keydown", handleKeyDown)
+      return () => document.removeEventListener("keydown", handleKeyDown)
+    }, [mode, undo, deleteSelected])
+
     // ── Wire mouse/touch events for shape tools ───────────────────────────────
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const wireShapeEvents = useCallback((canvas: any) => {
+    const wireShapeEvents = useCallback((canvas: any, onChange: () => void) => {
       let isDrawing = false
       let startX = 0
       let startY = 0
@@ -230,9 +313,28 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
       let currentShape: any = null
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      canvas.on("mouse:down", async ({ e }: { e: MouseEvent | TouchEvent }) => {
+      canvas.on("mouse:down", async ({ e, target }: { e: MouseEvent | TouchEvent; target?: any }) => {
         const tool = selectedToolRef.current
         if (tool === "freehand") return
+
+        if (target) {
+          // Text tool clicking an existing text object resumes editing it —
+          // matches the "click to type" UX used when the text was first
+          // created (single click, not fabric's default double-click). Every
+          // other tool/target combination defers to fabric's own
+          // selection/drag handling instead of drawing a new shape on top of
+          // whatever was clicked.
+          if (tool === "text" && (target.type === "i-text" || target.type === "text")) {
+            canvas.setActiveObject(target)
+            target.enterEditing()
+            canvas.renderAll()
+          }
+          return
+        }
+
+        // Deselect whatever was previously active so drawing a new shape on
+        // top of empty canvas doesn't leave a stray selection behind.
+        canvas.discardActiveObject()
 
         const pointer = canvas.getPointer(e)
         startX = pointer.x
@@ -249,9 +351,20 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
             selectable: true,
             editable: true,
           })
+          // fabric appends its hidden editing textarea to document.body by
+          // default, which sits outside the Radix Dialog/Sheet wrapping this
+          // canvas — its focus trap then immediately steals focus back since
+          // the textarea isn't a descendant of the dialog's content. Scoping
+          // it to our own container (which IS inside the dialog) makes the
+          // trap's containment check pass naturally, so typing works.
+          // (hiddenTextareaContainer is a real fabric v5 IText property, just
+          // missing from its own .d.ts — hence the any-cast.)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(text as any).hiddenTextareaContainer = containerRef.current
           canvas.add(text)
           canvas.setActiveObject(text)
           canvas.renderAll()
+          onChange()
           setTimeout(() => {
             text.enterEditing()
             text.selectAll()
@@ -321,6 +434,11 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
         isDrawing = false
         if (currentShape) {
           currentShape.setCoords()
+          // Newly drawn shapes are non-selectable while being dragged out
+          // (avoids fighting fabric's controls mid-draw); make them selectable
+          // now that the shape is finalized.
+          currentShape.set({ selectable: true, evented: true })
+          onChange()
           currentShape = null
         }
       })
@@ -390,7 +508,7 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
             width: viewport.width,
             height: viewport.height,
             isDrawingMode: isInteractive && mode !== "respond" ? true : false,
-            selection: false,
+            selection: isInteractive,
           })
 
           // 5. Fix the fabric wrapper element positioning so it overlays the PDF
@@ -438,9 +556,20 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
             }
           }
 
-          // 12. Wire mouse events for shape tools
+          // 12. Wire mouse events for shape tools + undo history tracking
           if (isInteractive) {
-            wireShapeEvents(fabricInstance)
+            historyRef.current = []
+            isRestoringRef.current = false
+            const snapshotChange = () => pushHistory(fabricInstance)
+            fabricInstance.on("object:modified", snapshotChange)
+            fabricInstance.on("path:created", snapshotChange)
+            fabricInstance.on("object:removed", snapshotChange)
+            // Fired by fabric when an IText editing session ends — captures
+            // typed content as its own undo step (text:changed fires per
+            // keystroke, which is too granular to snapshot).
+            fabricInstance.on("text:editing:exited", snapshotChange)
+            wireShapeEvents(fabricInstance, snapshotChange)
+            snapshotChange() // baseline snapshot — pre-edit state (locked shapes only)
           }
 
           fabricInstanceRef.current = fabricInstance
@@ -456,11 +585,17 @@ export const PDFAnnotationViewer = forwardRef<PDFAnnotationViewerRef, PDFAnnotat
       return () => {
         destroyed = true
         try {
+          // Explicitly drop our custom canvas.on(...) listeners (object:modified,
+          // path:created, object:removed) — dispose() tears down fabric's own
+          // internal DOM listeners but isn't guaranteed to clear these too, and
+          // this effect re-runs on every mode/fileUrl change.
+          fabricInstance?.off()
           fabricInstance?.dispose()
         } catch {
           // ignore dispose errors
         }
         fabricInstanceRef.current = null
+        historyRef.current = []
         setCanvasReady(false)
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps

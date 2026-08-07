@@ -1002,6 +1002,10 @@ export async function notifyRFIEscalated(rfiId: string): Promise<void> {
   console.log('NOTIFY: RFI escalated', rfiId)
 }
 
+export async function notifyRFIAssigned(rfiId: string, assignedToId: string): Promise<void> {
+  console.log('NOTIFY: RFI assigned', rfiId, assignedToId)
+}
+
 export async function notifyLeaveRequest(leaveRequestId: string): Promise<void> {
   console.log('NOTIFY: new leave request', leaveRequestId)
 }

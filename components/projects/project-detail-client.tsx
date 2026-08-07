@@ -609,6 +609,12 @@ export function ProjectDetailClient({
               currentUser={{ id: currentUserId, name: currentUserName, role: userRole }}
               projectDocuments={projectDocuments}
               projectContractors={projectContractors}
+              projectMembers={localProject.members
+                .filter((m) => m.user !== null)
+                .map((m) => ({
+                  id: m.user!.id,
+                  name: m.user!.name,
+                }))}
             />
           </TabsContent>
 
