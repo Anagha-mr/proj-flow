@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -220,120 +221,133 @@ export function OverviewTab({
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Tasks */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <CheckSquare className="w-3.5 h-3.5" />
-                Tasks
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{taskCounts.total}</p>
-              <div className="flex gap-3 mt-1 text-xs">
-                <span className="text-green-600">{taskCounts.done} done</span>
-                <span className="text-blue-600">{taskCounts.in_progress} in progress</span>
-                <span className="text-[#e94560]">{taskCounts.todo} to do</span>
-              </div>
-            </CardContent>
-          </Card>
+          <Link href={`/dashboard/projects/${localProject.id}/tasks`} className="block">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  Tasks
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{taskCounts.total}</p>
+                <div className="flex gap-3 mt-1 text-xs">
+                  <span className="text-green-600">{taskCounts.done} done</span>
+                  <span className="text-blue-600">{taskCounts.in_progress} in progress</span>
+                  <span className="text-[#e94560]">{taskCounts.todo} to do</span>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
 
           {/* Budget */}
-          <Card className={!canEditFinance ? "opacity-50" : ""}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <Wallet className="w-3.5 h-3.5" />
-                Budget
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {canEditFinance ? (
-                <>
-                  <p className="text-2xl font-bold">
-                    {financeSummary
-                      ? financeSummary.total_invoiced.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
-                      : "₹ —"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {contractValue != null ? (
-                      `of ${contractValue.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })} contract`
-                    ) : (
-                      <Popover open={cvPopoverOpen} onOpenChange={setCvPopoverOpen}>
-                        <PopoverTrigger asChild>
-                          <button className="text-xs text-[#e94560] hover:underline">Set contract value</button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-56 p-3" align="start">
-                          <div className="flex flex-col gap-2">
-                            <span className="text-xs font-medium">Contract Value ₹</span>
-                            <Input
-                              type="number" min={0} value={cvInput}
-                              onChange={(e) => setCvInput(e.target.value)}
-                              placeholder="e.g. 500000" autoFocus
-                            />
-                            <div className="flex gap-2">
-                              <Button size="sm" className="flex-1" onClick={handleSaveContractValue} disabled={savingCV}>Save</Button>
-                              <Button size="sm" variant="outline" onClick={() => setCvPopoverOpen(false)}>Cancel</Button>
+          <Link href={`/dashboard/projects/${localProject.id}/finance`} className="block">
+            <Card className={`hover:shadow-md transition-shadow cursor-pointer ${!canEditFinance ? "opacity-50" : ""}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5" />
+                  Budget
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {canEditFinance ? (
+                  <>
+                    <p className="text-2xl font-bold">
+                      {financeSummary
+                        ? financeSummary.total_invoiced.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
+                        : "₹ —"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {contractValue != null ? (
+                        `of ${contractValue.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })} contract`
+                      ) : (
+                        <Popover open={cvPopoverOpen} onOpenChange={setCvPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <button
+                              className="text-xs text-[#e94560] hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Set contract value
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-3" align="start">
+                            <div className="flex flex-col gap-2">
+                              <span className="text-xs font-medium">Contract Value ₹</span>
+                              <Input
+                                type="number" min={0} value={cvInput}
+                                onChange={(e) => setCvInput(e.target.value)}
+                                placeholder="e.g. 500000" autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <Button size="sm" className="flex-1" onClick={handleSaveContractValue} disabled={savingCV}>Save</Button>
+                                <Button size="sm" variant="outline" onClick={() => setCvPopoverOpen(false)}>Cancel</Button>
+                              </div>
                             </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    )}
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">—</p>
-              )}
-            </CardContent>
-          </Card>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">—</p>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
 
           {/* Expenses */}
-          <Card className={!canEditFinance ? "opacity-50" : ""}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5" />
-                Expenses
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {canEditFinance ? (
-                <>
-                  <p className="text-2xl font-bold">
-                    {financeSummary
-                      ? financeSummary.total_cost.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
-                      : "₹ —"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">Total project cost</p>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">—</p>
-              )}
-            </CardContent>
-          </Card>
+          <Link href={`/dashboard/projects/${localProject.id}/finance`} className="block">
+            <Card className={`hover:shadow-md transition-shadow cursor-pointer ${!canEditFinance ? "opacity-50" : ""}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5" />
+                  Expenses
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {canEditFinance ? (
+                  <>
+                    <p className="text-2xl font-bold">
+                      {financeSummary
+                        ? financeSummary.total_cost.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
+                        : "₹ —"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Total project cost</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">—</p>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
 
           {/* Timeline */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" />
-                Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {start && end ? (
-                <>
-                  <p className="text-sm font-semibold">
-                    {format(new Date(start), "dd MMM yy")} → {format(new Date(end), "dd MMM yy")}
-                  </p>
-                  <p className={`text-xs mt-1 ${daysRemaining !== null && daysRemaining < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                    {daysRemaining === null ? "—"
-                      : daysRemaining < 0 ? `${Math.abs(daysRemaining)} days overdue`
-                      : `${daysRemaining} days remaining`}
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">No timeline set</p>
-              )}
-            </CardContent>
-          </Card>
+          <Link href={`/dashboard/projects/${localProject.id}/timeline`} className="block">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  Timeline
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {start && end ? (
+                  <>
+                    <p className="text-sm font-semibold">
+                      {format(new Date(start), "dd MMM yy")} → {format(new Date(end), "dd MMM yy")}
+                    </p>
+                    <p className={`text-xs mt-1 ${daysRemaining !== null && daysRemaining < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {daysRemaining === null ? "—"
+                        : daysRemaining < 0 ? `${Math.abs(daysRemaining)} days overdue`
+                        : `${daysRemaining} days remaining`}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No timeline set</p>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* Widgets row */}
