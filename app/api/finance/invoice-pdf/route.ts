@@ -105,9 +105,10 @@ async function generatePdf(supabase: any, invoice: any): Promise<NextResponse> {
     .eq("studio_id", studioId)
 
   const lineItems: Array<{
-    id: string; description: string; hsn_code: string; amount: number
+    id: string; description: string; hsn_code: string
+    quantity: number; unit: string; unit_rate: number; amount: number
     gst_rate: number; cgst: number; sgst: number; igst: number
-  }> = Array.isArray(invoice.line_items) ? (invoice.line_items as unknown as Array<{ id: string; description: string; hsn_code: string; amount: number; gst_rate: number; cgst: number; sgst: number; igst: number }>) : []
+  }> = Array.isArray(invoice.line_items) ? (invoice.line_items as unknown as Array<{ id: string; description: string; hsn_code: string; quantity: number; unit: string; unit_rate: number; amount: number; gst_rate: number; cgst: number; sgst: number; igst: number }>) : []
 
   const isIntraState = lineItems.some((i) => i.cgst > 0)
   const totalCgst = lineItems.reduce((s, i) => s + i.cgst, 0)
@@ -131,15 +132,23 @@ async function generatePdf(supabase: any, invoice: any): Promise<NextResponse> {
 
   const lineItemsHtml = lineItems.map((item, idx) => {
     const tax = item.cgst + item.sgst + item.igst
+    // Invoices issued before Bug #19's fix may not have quantity/unit/unit_rate
+    // recorded — fall back to a dash rather than showing "undefined"/NaN.
+    const qtyDisplay = item.quantity != null ? String(item.quantity) : "—"
+    const unitDisplay = item.unit || "—"
+    const rateDisplay = item.unit_rate != null ? formatINR(item.unit_rate) : "—"
     return `
       <tr style="border-bottom:1px solid #eee;">
-        <td style="padding:8px 0;">${idx + 1}</td>
-        <td style="padding:8px 4px;">${item.description}</td>
-        <td style="padding:8px 4px;">${item.hsn_code}</td>
-        <td style="text-align:right; padding:8px 4px;">${formatINR(item.amount)}</td>
-        <td style="text-align:right; padding:8px 4px;">${item.gst_rate}%</td>
-        <td style="text-align:right; padding:8px 0;">${formatINR(tax)}</td>
-        <td style="text-align:right; padding:8px 0;">${formatINR(item.amount + tax)}</td>
+        <td style="padding:6px 4px;">${idx + 1}</td>
+        <td style="padding:6px 4px;">${item.description}</td>
+        <td style="padding:6px 4px;">${item.hsn_code}</td>
+        <td style="text-align:right; padding:6px 4px;">${qtyDisplay}</td>
+        <td style="padding:6px 4px;">${unitDisplay}</td>
+        <td style="text-align:right; padding:6px 4px;">${rateDisplay}</td>
+        <td style="text-align:right; padding:6px 4px;">${formatINR(item.amount)}</td>
+        <td style="text-align:right; padding:6px 4px;">${item.gst_rate}%</td>
+        <td style="text-align:right; padding:6px 4px;">${formatINR(tax)}</td>
+        <td style="text-align:right; padding:6px 4px;">${formatINR(item.amount + tax)}</td>
       </tr>`
   }).join("")
 
@@ -197,16 +206,19 @@ async function generatePdf(supabase: any, invoice: any): Promise<NextResponse> {
 
   <hr class="divider">
 
-  <table>
+  <table style="font-size:11px;">
     <thead>
       <tr>
-        <th style="width:30px;">#</th>
+        <th style="width:22px;">#</th>
         <th>Description</th>
-        <th style="width:80px;">HSN</th>
-        <th class="right" style="width:90px;">Amount</th>
-        <th class="right" style="width:50px;">GST%</th>
-        <th class="right" style="width:80px;">Tax</th>
-        <th class="right" style="width:90px;">Total</th>
+        <th style="width:55px;">HSN</th>
+        <th class="right" style="width:34px;">Qty</th>
+        <th style="width:50px;">Unit</th>
+        <th class="right" style="width:62px;">Rate</th>
+        <th class="right" style="width:70px;">Amount</th>
+        <th class="right" style="width:38px;">GST%</th>
+        <th class="right" style="width:60px;">Tax</th>
+        <th class="right" style="width:70px;">Total</th>
       </tr>
     </thead>
     <tbody>

@@ -52,3 +52,11 @@ export const PROJECT_TYPES = {
   retail: "Retail",
   other: "Other",
 } as const
+
+// Bug #19: statutory requirement (CGST Act) — every invoice line item must
+// state quantity and unit of measure, not just a lump amount. Shared between
+// the invoice server action (validation) and the invoice form (dropdown).
+export const INVOICE_UNITS = [
+  "nos.", "sqft", "sqm", "rmt", "hrs", "days", "lumpsum", "set", "lot",
+] as const
+export type InvoiceUnit = typeof INVOICE_UNITS[number]

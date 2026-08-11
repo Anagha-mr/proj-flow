@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Trash2, Plus } from "lucide-react"
 import { updateInvoice, type Invoice, type LineItem } from "@/app/actions/finance"
+import { INVOICE_UNITS } from "@/lib/constants"
 import { computeGst } from "@/lib/gst"
 import { useToast } from "@/hooks/use-toast"
 import { format } from "date-fns"
@@ -39,12 +40,28 @@ function emptyLineItem(): LineItem {
     id: crypto.randomUUID(),
     description: "",
     hsn_code: "",
+    quantity: 0,
+    unit: "",
+    unit_rate: 0,
     amount: 0,
     gst_rate: 18,
     cgst: 0,
     sgst: 0,
     igst: 0,
   }
+}
+
+function validateLineItems(items: LineItem[]): string | null {
+  for (const item of items) {
+    const label = item.description || "A line item"
+    if (!item.quantity || item.quantity <= 0) {
+      return `${label} needs a quantity greater than 0`
+    }
+    if (!item.unit) {
+      return `${label} needs a unit selected`
+    }
+  }
+  return null
 }
 
 interface InvoiceEditorSheetProps {
@@ -84,12 +101,15 @@ export function InvoiceEditorSheet({
         prev.map((item) => {
           if (item.id !== id) return item
           const updated = { ...item, [field]: raw }
-          // Recompute GST whenever amount or gst_rate changes
-          if (field === "amount" || field === "gst_rate") {
-            const amount = field === "amount" ? Number(raw) : item.amount
+          // Recompute line total (quantity × rate) and GST whenever any of the
+          // three inputs feeding them changes.
+          if (field === "quantity" || field === "unit_rate" || field === "gst_rate") {
+            const quantity = field === "quantity" ? Number(raw) : item.quantity
+            const unitRate = field === "unit_rate" ? Number(raw) : item.unit_rate
             const gstRate = field === "gst_rate" ? Number(raw) : item.gst_rate
+            const amount = unitRate * quantity
             const { cgst, sgst, igst } = computeGst(studioStateCode, clientStateCode, amount, gstRate)
-            return { ...updated, amount, gst_rate: gstRate, cgst, sgst, igst }
+            return { ...updated, quantity, unit_rate: unitRate, gst_rate: gstRate, amount, cgst, sgst, igst }
           }
           return updated
         })
@@ -114,6 +134,11 @@ export function InvoiceEditorSheet({
   const total = subtotal + gstAmount
 
   async function handleSave() {
+    const validationError = validateLineItems(lineItems)
+    if (validationError) {
+      toast({ title: validationError, variant: "destructive" })
+      return
+    }
     setSaving(true)
     try {
       await updateInvoice(invoice.id, {
@@ -133,6 +158,12 @@ export function InvoiceEditorSheet({
   }
 
   async function handleSaveAndSend() {
+    const validationError = validateLineItems(lineItems)
+    if (validationError) {
+      toast({ title: validationError, variant: "destructive" })
+      setSendConfirm(false)
+      return
+    }
     // Save first then trigger send via parent
     setSaving(true)
     try {
@@ -208,20 +239,23 @@ export function InvoiceEditorSheet({
 
             {/* Line Items */}
             <div className="overflow-x-auto -mx-1">
-              <table className="w-full text-sm min-w-[560px]">
+              <table className="w-full text-sm min-w-[820px]">
                 <thead>
                   <tr className="text-xs font-medium text-muted-foreground border-b">
-                    <th className="text-left pb-2 pr-2 w-[35%]">Description</th>
-                    <th className="text-left pb-2 pr-2 w-[12%]">HSN</th>
-                    <th className="text-right pb-2 pr-2 w-[12%]">Amount ₹</th>
-                    <th className="text-right pb-2 pr-2 w-[8%]">GST %</th>
+                    <th className="text-left pb-2 pr-2 w-[22%]">Description</th>
+                    <th className="text-left pb-2 pr-2 w-[8%]">HSN</th>
+                    <th className="text-right pb-2 pr-2 w-[7%]">Qty</th>
+                    <th className="text-left pb-2 pr-2 w-[9%]">Unit</th>
+                    <th className="text-right pb-2 pr-2 w-[9%]">Rate ₹</th>
+                    <th className="text-right pb-2 pr-2 w-[10%]">Amount ₹</th>
+                    <th className="text-right pb-2 pr-2 w-[7%]">GST %</th>
                     {isIntraState ? (
                       <>
-                        <th className="text-right pb-2 pr-2 w-[9%]">CGST</th>
-                        <th className="text-right pb-2 pr-2 w-[9%]">SGST</th>
+                        <th className="text-right pb-2 pr-2 w-[8%]">CGST</th>
+                        <th className="text-right pb-2 pr-2 w-[8%]">SGST</th>
                       </>
                     ) : (
-                      <th className="text-right pb-2 pr-2 w-[18%]">IGST</th>
+                      <th className="text-right pb-2 pr-2 w-[16%]">IGST</th>
                     )}
                     <th className="w-[5%]" />
                   </tr>
@@ -249,11 +283,41 @@ export function InvoiceEditorSheet({
                         <Input
                           type="number"
                           min={0}
-                          value={item.amount || ""}
-                          onChange={(e) => updateItem(item.id, "amount", parseFloat(e.target.value) || 0)}
+                          step="any"
+                          value={item.quantity || ""}
+                          onChange={(e) => updateItem(item.id, "quantity", parseFloat(e.target.value) || 0)}
                           placeholder="0"
                           className="h-7 text-xs border-0 focus-visible:border focus-visible:border-[#e94560] focus-visible:ring-0 px-1 text-right"
                         />
+                      </td>
+                      <td className="py-1 pr-2">
+                        <Select
+                          value={item.unit}
+                          onValueChange={(v) => updateItem(item.id, "unit", v)}
+                        >
+                          <SelectTrigger className="h-7 text-xs border-0 focus:ring-[#e94560] focus:ring-1 px-1">
+                            <SelectValue placeholder="Unit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {INVOICE_UNITS.map((u) => (
+                              <SelectItem key={u} value={u}>{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-1 pr-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={item.unit_rate || ""}
+                          onChange={(e) => updateItem(item.id, "unit_rate", parseFloat(e.target.value) || 0)}
+                          placeholder="0"
+                          className="h-7 text-xs border-0 focus-visible:border focus-visible:border-[#e94560] focus-visible:ring-0 px-1 text-right"
+                        />
+                      </td>
+                      <td className="py-1 pr-2 text-right text-xs">
+                        {formatINR(item.amount)}
                       </td>
                       <td className="py-1 pr-2">
                         <Select

@@ -6,6 +6,7 @@ import { getScheduleSummary } from "./procurement"
 import { createClient } from "@/lib/supabase/server"
 import type { Json } from "@/lib/supabase/types"
 import { computeGst } from "@/lib/gst"
+import { INVOICE_UNITS, type InvoiceUnit } from "@/lib/constants"
 
 type SupabaseClientType = Awaited<ReturnType<typeof createClient>>
 
@@ -15,6 +16,10 @@ export interface LineItem {
   id: string
   description: string
   hsn_code: string
+  quantity: number
+  unit: string
+  unit_rate: number
+  /** Pre-tax line total = unit_rate × quantity. Feeds into lib/gst.ts unchanged in shape. */
   amount: number
   gst_rate: number
   cgst: number
@@ -244,13 +249,38 @@ export async function updateInvoice(
 
   if (updates.lineItems !== undefined) {
     const lineItems = updates.lineItems
-    patchSubtotal = lineItems.reduce((sum, item) => sum + item.amount, 0)
-    patchGstAmount = lineItems.reduce(
+
+    // Bug #19: quantity/unit are statutory requirements (CGST Act) — enforce
+    // server-side, not just in the form. A client-side dropdown limiting the
+    // choices isn't a guarantee against a direct/malformed action call.
+    for (const item of lineItems) {
+      const label = item.description || item.id
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+        throw new Error(`Line item "${label}" must have a quantity greater than 0`)
+      }
+      if (!INVOICE_UNITS.includes(item.unit as InvoiceUnit)) {
+        throw new Error(`Line item "${label}" has an invalid unit`)
+      }
+      if (!Number.isFinite(item.unit_rate) || item.unit_rate < 0) {
+        throw new Error(`Line item "${label}" must have a valid rate`)
+      }
+    }
+
+    // line_total (amount) is recomputed server-side from quantity × unit_rate
+    // rather than trusted from the client — the pre-tax figure that flows into
+    // lib/gst.ts, which is untouched and still just sums a plain number.
+    const normalizedLineItems = lineItems.map((item) => ({
+      ...item,
+      amount: item.unit_rate * item.quantity,
+    }))
+
+    patchSubtotal = normalizedLineItems.reduce((sum, item) => sum + item.amount, 0)
+    patchGstAmount = normalizedLineItems.reduce(
       (sum, item) => sum + item.cgst + item.sgst + item.igst,
       0
     )
     patchTotal = patchSubtotal + patchGstAmount
-    patchLineItems = lineItems as unknown as Json
+    patchLineItems = normalizedLineItems as unknown as Json
   }
 
   const { data: updated, error } = await supabase
