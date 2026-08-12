@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,8 +12,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar } from "lucide-react"
+import { ArrowLeft, Pencil, CheckSquare, Wallet, CreditCard, Calendar, ImageIcon, Plus, Trash2, X } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { createClient } from "@/lib/supabase/client"
 import { TasksTab } from "@/components/projects/tasks/tasks-tab"
 import { DocumentsTab } from "@/components/projects/documents/documents-tab"
 import { ProcurementTab } from "@/components/projects/procurement/procurement-tab"
@@ -42,7 +43,7 @@ import type { QuoteRequest } from "@/app/actions/quotes"
 import type { PortfolioGalleryItem } from "@/app/actions/portfolio"
 import type { Moodboard } from "@/app/actions/moodboards"
 import { formatDistanceToNow, differenceInDays, format } from "date-fns"
-import { updateProject, updateProjectContractValue } from "@/app/actions/projects"
+import { updateProject, updateProjectContractValue, addProjectMember, removeProjectMember } from "@/app/actions/projects"
 import { getProjectFinanceSummary } from "@/app/actions/finance"
 import { useToast } from "@/hooks/use-toast"
 
@@ -96,6 +97,29 @@ const PRIORITY_BADGE: Record<string, string> = {
   low: "bg-gray-100 text-gray-600",
   urgent: "bg-red-200 text-red-800",
 }
+
+const PROJECT_TYPES = [
+  { value: "residential", label: "Residential" },
+  { value: "commercial",  label: "Commercial" },
+  { value: "hospitality", label: "Hospitality" },
+  { value: "retail",      label: "Retail" },
+  { value: "other",       label: "Other" },
+]
+
+const PROJECT_ROLES = [
+  { value: "project_lead",     label: "Project Lead" },
+  { value: "senior_designer",  label: "Senior Designer" },
+  { value: "designer",         label: "Designer" },
+  { value: "intern",           label: "Intern" },
+  { value: "site_coordinator", label: "Site Coordinator" },
+]
+
+const PHASE_COLORS = ["#6366f1", "#8b5cf6", "#f59e0b", "#10b981", "#e94560"]
+
+type Phase = { id: string; name: string; start_date: string; end_date: string; status: string; color: string }
+type ScopeItem = { id: string; text: string }
+
+function uid() { return Math.random().toString(36).slice(2) }
 
 function getProjectDates(phases: unknown) {
   if (!Array.isArray(phases) || phases.length === 0) return { start: null, end: null }
@@ -222,16 +246,48 @@ export function ProjectDetailClient({
   const { start, end } = getProjectDates(localProject.phases)
   const daysRemaining = end ? differenceInDays(new Date(end), new Date()) : null
 
-  async function saveEdit(field: string, value: string) {
+  async function saveEdit(patch: Partial<Parameters<typeof updateProject>[1]>) {
     setSaving(true)
     try {
-      const updated = await updateProject(localProject.id, { [field]: value })
+      const updated = await updateProject(localProject.id, patch)
       setLocalProject((prev) => ({ ...prev, ...updated }))
       toast({ title: "Saved" })
     } catch {
       toast({ title: "Failed to save", variant: "destructive" })
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleAddMember(userId: string, projectRole: string) {
+    try {
+      await addProjectMember(localProject.id, userId, projectRole)
+      const user = studioUsers.find((u) => u.id === userId) ?? null
+      setLocalProject((prev) => ({
+        ...prev,
+        members: [
+          ...prev.members.filter((m) => m.user_id !== userId),
+          {
+            id: `${prev.id}-${userId}`,
+            user_id: userId,
+            project_role: projectRole,
+            user: user ? { id: user.id, name: user.name, profile_photo_url: user.profile_photo_url, role: user.role } : null,
+          },
+        ],
+      }))
+      toast({ title: "Team member added" })
+    } catch {
+      toast({ title: "Failed to add team member", variant: "destructive" })
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    try {
+      await removeProjectMember(localProject.id, userId)
+      setLocalProject((prev) => ({ ...prev, members: prev.members.filter((m) => m.user_id !== userId) }))
+      toast({ title: "Team member removed" })
+    } catch {
+      toast({ title: "Failed to remove team member", variant: "destructive" })
     }
   }
 
@@ -724,11 +780,20 @@ export function ProjectDetailClient({
 
       {/* Edit side panel */}
       <Sheet open={editOpen} onOpenChange={setEditOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Edit Project</SheetTitle>
           </SheetHeader>
-          <EditProjectForm project={localProject} onSave={saveEdit} saving={saving} />
+          <EditProjectForm
+            project={localProject}
+            onSave={saveEdit}
+            saving={saving}
+            studioId={studioId}
+            studioUsers={studioUsers}
+            currentUserId={currentUserId}
+            onAddMember={handleAddMember}
+            onRemoveMember={handleRemoveMember}
+          />
         </SheetContent>
       </Sheet>
     </div>
@@ -739,33 +804,212 @@ function EditProjectForm({
   project,
   onSave,
   saving,
+  studioId,
+  studioUsers,
+  currentUserId,
+  onAddMember,
+  onRemoveMember,
 }: {
   project: Project
-  onSave: (field: string, value: string) => void
+  onSave: (patch: Partial<Parameters<typeof updateProject>[1]>) => void
   saving: boolean
+  studioId: string
+  studioUsers: StudioUser[]
+  currentUserId: string
+  onAddMember: (userId: string, projectRole: string) => void
+  onRemoveMember: (userId: string) => void
 }) {
+  const { toast } = useToast()
   const [name, setName] = useState(project.name)
   const [scopeDesc, setScopeDesc] = useState(project.scope_description ?? "")
   const [status, setStatus] = useState(project.status)
   const [pinterestUrl, setPinterestUrl] = useState(project.pinterest_url ?? "")
+  const [type, setType] = useState(project.type)
+  const [typeCustom, setTypeCustom] = useState(project.type_custom ?? "")
+  const [addressLine1, setAddressLine1] = useState(project.address_line1 ?? "")
+  const [addressLine2, setAddressLine2] = useState(project.address_line2 ?? "")
+  const [addressLine3, setAddressLine3] = useState(project.address_line3 ?? "")
+  const [postcode, setPostcode] = useState(project.postcode ?? "")
+  const [phases, setPhases] = useState<Phase[]>(
+    Array.isArray(project.phases) ? (project.phases as Phase[]) : []
+  )
+  const [scopeItems, setScopeItems] = useState<ScopeItem[]>(
+    Array.isArray(project.scope_items) ? (project.scope_items as ScopeItem[]) : []
+  )
+  const [coverPreview, setCoverPreview] = useState(project.cover_image_url)
+  const [uploadingCover, setUploadingCover] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  // ── Cover image ──────────────────────────────────────────────
+  async function handleCoverFile(file: File) {
+    if (!file.type.match(/image\/(jpeg|png|webp)/)) return
+    const reader = new FileReader()
+    reader.onload = (e) => setCoverPreview(e.target?.result as string)
+    reader.readAsDataURL(file)
+
+    setUploadingCover(true)
+    try {
+      const supabase = createClient()
+      // Fixed path (no timestamp) so re-uploads overwrite the previous cover
+      // instead of leaving orphaned files in Storage.
+      const path = `${studioId}/${project.id}/cover`
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("projectflow-files")
+        .upload(path, file, { upsert: true, contentType: file.type })
+      if (uploadError) throw uploadError
+      const { data: urlData } = supabase.storage
+        .from("projectflow-files")
+        .getPublicUrl(uploadData.path)
+      // Cache-bust so the new image shows immediately even though the path is unchanged
+      onSave({ cover_image_url: `${urlData.publicUrl}?t=${Date.now()}` })
+    } catch {
+      toast({ title: "Failed to upload cover image", variant: "destructive" })
+      setCoverPreview(project.cover_image_url)
+    } finally {
+      setUploadingCover(false)
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const file = e.dataTransfer.files[0]
+    if (file) handleCoverFile(file)
+  }
+
+  // ── Phases ───────────────────────────────────────────────────
+  function updatePhase(id: string, field: keyof Phase, value: string) {
+    setPhases((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)))
+  }
+
+  function commitPhases(next: Phase[]) {
+    onSave({ phases: next })
+  }
+
+  function addPhase() {
+    const next = [
+      ...phases,
+      { id: uid(), name: "New Phase", start_date: "", end_date: "", status: "pending", color: PHASE_COLORS[phases.length % PHASE_COLORS.length] },
+    ]
+    setPhases(next)
+    commitPhases(next)
+  }
+
+  function removePhase(id: string) {
+    const next = phases.filter((p) => p.id !== id)
+    setPhases(next)
+    commitPhases(next)
+  }
+
+  // ── Scope items ──────────────────────────────────────────────
+  function updateScopeItem(id: string, text: string) {
+    setScopeItems((prev) => prev.map((i) => (i.id === id ? { ...i, text } : i)))
+  }
+
+  function commitScopeItems(next: ScopeItem[]) {
+    onSave({ scope_items: next })
+  }
+
+  function addScopeItem() {
+    const next = [...scopeItems, { id: uid(), text: "" }]
+    setScopeItems(next)
+  }
+
+  function removeScopeItem(id: string) {
+    const next = scopeItems.filter((i) => i.id !== id)
+    setScopeItems(next)
+    commitScopeItems(next)
+  }
+
+  // ── Team assignment ──────────────────────────────────────────
+  const assignedIds = new Set(project.members.map((m) => m.user_id))
+  const unassignedUsers = studioUsers.filter((u) => !assignedIds.has(u.id))
 
   return (
-    <div className="flex flex-col gap-5 mt-6">
+    <div className="flex flex-col gap-6 mt-6">
+      {/* Cover image */}
+      <div>
+        <label className="text-sm font-medium mb-2 block">Cover Image</label>
+        <div
+          className="border-2 border-dashed rounded-lg overflow-hidden cursor-pointer hover:border-[#e94560] transition-colors relative"
+          style={{ aspectRatio: "16/9", maxHeight: 180 }}
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onClick={() => fileRef.current?.click()}
+        >
+          {coverPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverPreview} alt="Cover preview" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <ImageIcon className="w-8 h-8" />
+              <span className="text-sm">Drag & drop or click to upload</span>
+              <span className="text-xs">JPG, PNG, WEBP</span>
+            </div>
+          )}
+          {uploadingCover && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white text-xs">
+              Uploading…
+            </div>
+          )}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCoverFile(f) }}
+        />
+      </div>
+
       <div>
         <label className="text-sm font-medium mb-1.5 block">Project Name</label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => name !== project.name && onSave("name", name)}
+          onBlur={() => name !== project.name && onSave({ name })}
           className="focus-visible:ring-[#e94560]"
         />
+      </div>
+
+      {/* Project type */}
+      <div>
+        <label className="text-sm font-medium mb-2 block">Project Type</label>
+        <div className="flex flex-wrap gap-2">
+          {PROJECT_TYPES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => {
+                setType(t.value)
+                onSave({ type: t.value, type_custom: t.value === "other" ? typeCustom : null })
+              }}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                type === t.value
+                  ? "border-[#e94560] bg-[#e94560]/10 text-[#e94560]"
+                  : "border-input text-muted-foreground hover:border-[#e94560]/50"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {type === "other" && (
+          <div className="mt-2">
+            <Input
+              value={typeCustom}
+              onChange={(e) => setTypeCustom(e.target.value)}
+              onBlur={() => typeCustom !== (project.type_custom ?? "") && onSave({ type_custom: typeCustom })}
+              placeholder="Describe the project type"
+              className="focus-visible:ring-[#e94560]"
+            />
+          </div>
+        )}
       </div>
 
       <div>
         <label className="text-sm font-medium mb-1.5 block">Status</label>
         <Select
           value={status}
-          onValueChange={(v) => { setStatus(v); onSave("status", v) }}
+          onValueChange={(v) => { setStatus(v); onSave({ status: v }) }}
         >
           <SelectTrigger className="focus:ring-[#e94560]">
             <SelectValue />
@@ -779,15 +1023,211 @@ function EditProjectForm({
         </Select>
       </div>
 
+      {/* Address */}
+      <div>
+        <label className="text-sm font-medium mb-1.5 block">Address</label>
+        <div className="flex flex-col gap-2">
+          <Input
+            value={addressLine1}
+            onChange={(e) => setAddressLine1(e.target.value)}
+            onBlur={() => addressLine1 !== (project.address_line1 ?? "") && onSave({ address_line1: addressLine1 || null })}
+            placeholder="Address Line 1"
+            className="focus-visible:ring-[#e94560]"
+          />
+          <Input
+            value={addressLine2}
+            onChange={(e) => setAddressLine2(e.target.value)}
+            onBlur={() => addressLine2 !== (project.address_line2 ?? "") && onSave({ address_line2: addressLine2 || null })}
+            placeholder="Address Line 2"
+            className="focus-visible:ring-[#e94560]"
+          />
+          <Input
+            value={addressLine3}
+            onChange={(e) => setAddressLine3(e.target.value)}
+            onBlur={() => addressLine3 !== (project.address_line3 ?? "") && onSave({ address_line3: addressLine3 || null })}
+            placeholder="Address Line 3"
+            className="focus-visible:ring-[#e94560]"
+          />
+          <Input
+            value={postcode}
+            onChange={(e) => setPostcode(e.target.value)}
+            onBlur={() => postcode !== (project.postcode ?? "") && onSave({ postcode: postcode || null })}
+            placeholder="Postcode"
+            className="focus-visible:ring-[#e94560]"
+          />
+        </div>
+      </div>
+
+      {/* Phases */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium">Phases</label>
+          <button
+            onClick={addPhase}
+            className="flex items-center gap-1 text-xs text-[#e94560] font-medium hover:opacity-80 transition-opacity"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add phase
+          </button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {phases.map((phase) => (
+            <div key={phase.id} className="border rounded-lg p-3 flex flex-col gap-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: phase.color }} />
+                <Input
+                  value={phase.name}
+                  onChange={(e) => updatePhase(phase.id, "name", e.target.value)}
+                  onBlur={() => commitPhases(phases)}
+                  placeholder="Phase name"
+                  className="flex-1 h-8 text-sm focus-visible:ring-[#e94560]"
+                />
+                <button
+                  onClick={() => removePhase(phase.id)}
+                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Start Date</label>
+                  <Input
+                    type="date"
+                    value={phase.start_date}
+                    onChange={(e) => updatePhase(phase.id, "start_date", e.target.value)}
+                    onBlur={() => commitPhases(phases)}
+                    className="h-8 text-sm focus-visible:ring-[#e94560]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">End Date</label>
+                  <Input
+                    type="date"
+                    value={phase.end_date}
+                    onChange={(e) => updatePhase(phase.id, "end_date", e.target.value)}
+                    onBlur={() => commitPhases(phases)}
+                    className="h-8 text-sm focus-visible:ring-[#e94560]"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          {phases.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">No phases yet. Click &ldquo;+ Add phase&rdquo; to define the timeline.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Team assignment */}
+      <div>
+        <label className="text-sm font-medium mb-2 block">Team</label>
+        <div className="flex flex-col gap-2">
+          {project.members.map((m) => (
+            <div key={m.user_id} className="flex items-center gap-3 border rounded-lg p-2.5">
+              <Avatar className="w-8 h-8 shrink-0">
+                <AvatarFallback className="bg-[#1a1a2e] text-white text-xs">
+                  {(m.user?.name ?? "?").slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {m.user?.name ?? "Unknown"}
+                  {m.user_id === currentUserId && <span className="text-xs text-muted-foreground"> (you)</span>}
+                </p>
+              </div>
+              <Select
+                value={m.project_role}
+                onValueChange={(v) => onAddMember(m.user_id, v)}
+              >
+                <SelectTrigger className="h-8 w-40 text-xs focus:ring-[#e94560]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROJECT_ROLES.map((r) => (
+                    <SelectItem key={r.value} value={r.value} className="text-xs">{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <button
+                onClick={() => onRemoveMember(m.user_id)}
+                disabled={m.user_id === currentUserId}
+                className="text-muted-foreground hover:text-destructive transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                title={m.user_id === currentUserId ? "You cannot remove yourself" : "Remove from project"}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {project.members.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">No team members assigned.</p>
+          )}
+        </div>
+
+        {unassignedUsers.length > 0 && (
+          <div className="mt-3">
+            <p className="text-xs text-muted-foreground mb-1.5">Add to project</p>
+            <div className="flex flex-wrap gap-2">
+              {unassignedUsers.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => onAddMember(u.id, "designer")}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium hover:border-[#e94560] hover:text-[#e94560] transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  {u.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div>
         <label className="text-sm font-medium mb-1.5 block">Scope Description</label>
         <Textarea
           value={scopeDesc}
           onChange={(e) => setScopeDesc(e.target.value)}
-          onBlur={() => scopeDesc !== (project.scope_description ?? "") && onSave("scope_description", scopeDesc)}
+          onBlur={() => scopeDesc !== (project.scope_description ?? "") && onSave({ scope_description: scopeDesc })}
           rows={4}
           className="focus-visible:ring-[#e94560]"
         />
+      </div>
+
+      {/* Scope items */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium">Scope Items</label>
+          <button
+            onClick={addScopeItem}
+            className="flex items-center gap-1 text-xs text-[#e94560] font-medium hover:opacity-80 transition-opacity"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add item
+          </button>
+        </div>
+        <div className="flex flex-col gap-2">
+          {scopeItems.map((item) => (
+            <div key={item.id} className="flex gap-2 items-center">
+              <Input
+                value={item.text}
+                onChange={(e) => updateScopeItem(item.id, e.target.value)}
+                onBlur={() => commitScopeItems(scopeItems)}
+                placeholder="e.g. Living room interior design"
+                className="flex-1 focus-visible:ring-[#e94560]"
+              />
+              <button
+                onClick={() => removeScopeItem(item.id)}
+                className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {scopeItems.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">No scope items yet.</p>
+          )}
+        </div>
       </div>
 
       <div>
@@ -795,7 +1235,7 @@ function EditProjectForm({
         <Input
           value={pinterestUrl}
           onChange={(e) => setPinterestUrl(e.target.value)}
-          onBlur={() => pinterestUrl !== (project.pinterest_url ?? "") && onSave("pinterest_url", pinterestUrl)}
+          onBlur={() => pinterestUrl !== (project.pinterest_url ?? "") && onSave({ pinterest_url: pinterestUrl })}
           placeholder="https://pinterest.com/…"
           className="focus-visible:ring-[#e94560]"
         />
