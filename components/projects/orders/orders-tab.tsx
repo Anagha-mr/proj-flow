@@ -61,7 +61,7 @@ export function OrdersTab({ orderTracking: initialTracking, orderSummary: initia
     const supabase = createClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(supabase.from as any)("procurement_items")
-      .select("id, name, supplier_id, image_url, total_cost")
+      .select("id, name, supplier_id, image_url, product_image_url, total_cost")
       .eq("project_id", projectId)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then(({ data }: { data: any[] | null }) => {
@@ -69,7 +69,7 @@ export function OrdersTab({ orderTracking: initialTracking, orderSummary: initia
           id: i.id,
           name: i.name,
           vendor_id: i.supplier_id ?? null,
-          image_url: i.image_url ?? null,
+          image_url: i.product_image_url ?? i.image_url ?? null,
           total_cost: i.total_cost ?? null,
         })))
       })

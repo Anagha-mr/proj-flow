@@ -34,8 +34,9 @@ import {
   removeTaskAssignee,
   addTaskDependency,
   removeTaskDependency,
+  getReviewLogs,
 } from "@/app/actions/tasks"
-import type { TaskWithDetails, TaskComment, TaskAttachment } from "@/app/actions/tasks"
+import type { TaskWithDetails, TaskComment, TaskAttachment, ReviewLogEntry } from "@/app/actions/tasks"
 
 const PRIORITY_COLORS: Record<string, string> = {
   urgent: "#e94560",
@@ -99,6 +100,7 @@ export function TaskDetailPanel({
   const [subtasks, setSubtasks] = useState<TaskWithDetails[]>([])
   const [comments, setComments] = useState<TaskComment[]>([])
   const [attachments, setAttachments] = useState<TaskAttachment[]>([])
+  const [reviewLogs, setReviewLogs] = useState<ReviewLogEntry[]>([])
   const [loadingDetail, setLoadingDetail] = useState(false)
 
   // Edit states
@@ -114,6 +116,10 @@ export function TaskDetailPanel({
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
   const [addingSubtask, setAddingSubtask] = useState(false)
   const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false)
+  const [reviewerPopoverOpen, setReviewerPopoverOpen] = useState(false)
+  const [reviewNoteDialogOpen, setReviewNoteDialogOpen] = useState(false)
+  const [pendingReviewStatus, setPendingReviewStatus] = useState<string | null>(null)
+  const [reviewNoteInput, setReviewNoteInput] = useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const [nestedTask, setNestedTask] = useState<TaskWithDetails | null>(null)
@@ -129,16 +135,19 @@ export function TaskDetailPanel({
     setSubtasks([])
     setComments([])
     setAttachments([])
+    setReviewLogs([])
     setLoadingDetail(true)
     Promise.all([
       getSubtasks(task.id),
       getTaskComments(task.id),
       getTaskAttachments(task.id),
+      getReviewLogs(task.id),
     ])
-      .then(([subs, cmts, atts]) => {
+      .then(([subs, cmts, atts, logs]) => {
         setSubtasks(subs)
         setComments(cmts)
         setAttachments(atts)
+        setReviewLogs(logs)
       })
       .catch(() => toast({ title: "Failed to load task details", variant: "destructive" }))
       .finally(() => setLoadingDetail(false))
@@ -150,6 +159,10 @@ export function TaskDetailPanel({
     setCommentClientVisible(false)
     setNewSubtaskTitle("")
     setAssigneePopoverOpen(false)
+    setReviewerPopoverOpen(false)
+    setReviewNoteDialogOpen(false)
+    setPendingReviewStatus(null)
+    setReviewNoteInput("")
     setDeleteDialogOpen(false)
     setNestedTask(null)
   }, [task?.id])
@@ -160,12 +173,57 @@ export function TaskDetailPanel({
       try {
         await updateTask(task.id, { [field]: value } as Parameters<typeof updateTask>[1])
         onUpdateTask(task.id, { [field]: value } as Partial<TaskWithDetails>)
-      } catch {
-        toast({ title: "Failed to save", variant: "destructive" })
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to save"
+        toast({ title: msg, variant: "destructive" })
       }
     },
     [task, onUpdateTask, toast]
   )
+
+  async function handleStatusChangeRequest(newStatus: string) {
+    if (!task) return
+    if (activeTask.status === "review" && (newStatus === "done" || newStatus === "in_progress")) {
+      setPendingReviewStatus(newStatus)
+      setReviewNoteInput("")
+      setReviewNoteDialogOpen(true)
+      return
+    }
+    saveField("status", newStatus)
+  }
+
+  async function handleConfirmReviewOutcome() {
+    if (!task || !pendingReviewStatus) return
+    try {
+      await updateTask(task.id, { status: pendingReviewStatus, review_notes: reviewNoteInput.trim() || null })
+      onUpdateTask(task.id, { status: pendingReviewStatus })
+      const logs = await getReviewLogs(task.id)
+      setReviewLogs(logs)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to save"
+      toast({ title: msg, variant: "destructive" })
+    } finally {
+      setReviewNoteDialogOpen(false)
+      setPendingReviewStatus(null)
+      setReviewNoteInput("")
+    }
+  }
+
+  async function handleSetReviewer(userId: string | null) {
+    if (!task) return
+    try {
+      await updateTask(task.id, { reviewer_id: userId })
+      const reviewer = userId ? studioUsers.find((u) => u.id === userId) ?? null : null
+      onUpdateTask(task.id, {
+        reviewer_id: userId,
+        reviewer: reviewer ? { id: reviewer.id, name: reviewer.name, profile_photo_url: reviewer.profile_photo_url } : null,
+      })
+      setReviewerPopoverOpen(false)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to set reviewer"
+      toast({ title: msg, variant: "destructive" })
+    }
+  }
 
   // Auto-calculated progress from subtasks
   const autoProgress =
@@ -369,7 +427,7 @@ export function TaskDetailPanel({
               <div className="px-5 py-3 border-b">
                 <Select
                   value={activeTask.status}
-                  onValueChange={(v) => saveField("status", v)}
+                  onValueChange={handleStatusChangeRequest}
                 >
                   <SelectTrigger className="h-8 w-40 text-sm focus:ring-[#e94560]">
                     <SelectValue />
@@ -561,6 +619,93 @@ export function TaskDetailPanel({
                   )}
                 </div>
               </div>
+
+              {/* Reviewer — separate from Assignees; required before status can be set to Review */}
+              <div className="px-5 py-4 border-b">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium">Reviewer</span>
+                  <Popover open={reviewerPopoverOpen} onOpenChange={setReviewerPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2">
+                        <Plus className="w-3 h-3 mr-1" />
+                        {activeTask.reviewer ? "Change" : "Assign"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 p-2" align="end">
+                      <div className="flex flex-col gap-1">
+                        {studioUsers.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-2 text-center">No project members</p>
+                        ) : (
+                          studioUsers.map((u) => (
+                            <button
+                              key={u.id}
+                              onClick={() => handleSetReviewer(u.id)}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent text-sm w-full text-left"
+                            >
+                              <Avatar className="w-6 h-6">
+                                <AvatarFallback className="bg-[#1a1a2e] text-white text-xs">
+                                  {u.name.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              {u.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                {activeTask.reviewer ? (
+                  <div className="flex items-center gap-1.5 bg-secondary rounded-full pl-1 pr-2 py-0.5 w-fit">
+                    <Avatar className="w-5 h-5">
+                      <AvatarFallback className="bg-[#1a1a2e] text-white text-[10px]">
+                        {activeTask.reviewer.name.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-xs">{activeTask.reviewer.name}</span>
+                    <button
+                      onClick={() => handleSetReviewer(null)}
+                      className="text-muted-foreground hover:text-foreground ml-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No reviewer — required before status can be set to Review
+                  </p>
+                )}
+              </div>
+
+              {/* Review history */}
+              {reviewLogs.length > 0 && (
+                <div className="px-5 py-4 border-b">
+                  <span className="text-xs font-medium">Review History</span>
+                  <div className="flex flex-col gap-2 mt-2">
+                    {reviewLogs.map((log) => (
+                      <div key={log.id} className="flex items-start gap-2 text-xs p-2 rounded-md border">
+                        <Badge
+                          variant="outline"
+                          className={`shrink-0 ${
+                            log.outcome === "approved"
+                              ? "text-green-600 border-green-200"
+                              : "text-amber-600 border-amber-200"
+                          }`}
+                        >
+                          {log.outcome === "approved" ? "Approved" : "Changes requested"}
+                        </Badge>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-muted-foreground">
+                            {log.reviewer?.name ?? "Unknown reviewer"} ·{" "}
+                            {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                          </p>
+                          {log.notes && <p className="mt-0.5 break-words">{log.notes}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Subtasks */}
               <div className="px-5 py-4 border-b">
@@ -861,6 +1006,33 @@ export function TaskDetailPanel({
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Review outcome notes (Review -> Done / In Progress) */}
+      <Dialog open={reviewNoteDialogOpen} onOpenChange={(o) => !o && setReviewNoteDialogOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {pendingReviewStatus === "done" ? "Approve and mark Done" : "Request changes"}
+            </DialogTitle>
+            <DialogDescription>
+              This will log a review outcome for &ldquo;{task.title}&rdquo;. Notes are optional.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            className="text-sm resize-none focus-visible:ring-[#e94560]"
+            rows={3}
+            placeholder="Add review notes… (optional)"
+            value={reviewNoteInput}
+            onChange={(e) => setReviewNoteInput(e.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReviewNoteDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-[#e94560] hover:bg-[#c73652]" onClick={handleConfirmReviewOutcome}>
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

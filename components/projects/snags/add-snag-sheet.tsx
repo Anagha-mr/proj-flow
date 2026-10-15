@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
@@ -9,9 +9,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Upload, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { createSnagItem } from "@/app/actions/snags"
+import { createSnagItem, updateSnagItem, getProjectDrawingDocuments } from "@/app/actions/snags"
 import type { SnagItem } from "@/app/actions/snags"
 import type { Contractor } from "@/app/actions/contractors"
+
+const NO_PLAN_REFERENCE = "__none__"
 
 interface StudioUser { id: string; name: string; role: string }
 
@@ -22,24 +24,65 @@ interface AddSnagSheetProps {
   projectContractors: Contractor[]
   studioUsers: StudioUser[]
   onCreated: (snag: SnagItem) => void
+  /** When set, the sheet edits this snag instead of creating a new one. */
+  editSnag?: SnagItem | null
+  onUpdated?: (snag: SnagItem) => void
 }
 
 type AssignedToType = 'contractor' | 'vendor' | 'designer'
 
-export function AddSnagSheet({ open, onOpenChange, project, projectContractors, studioUsers, onCreated }: AddSnagSheetProps) {
+export function AddSnagSheet({ open, onOpenChange, project, projectContractors, studioUsers, onCreated, editSnag, onUpdated }: AddSnagSheetProps) {
   const { toast } = useToast()
+  const isEdit = !!editSnag
   const [saving, setSaving] = useState(false)
   const [photoUrl, setPhotoUrl] = useState("")
   const [photoPreview, setPhotoPreview] = useState("")
   const [uploading, setUploading] = useState(false)
   const [locationDescription, setLocationDescription] = useState("")
-  const [planReference, setPlanReference] = useState("")
+  const [planReferenceDocumentId, setPlanReferenceDocumentId] = useState("")
+  const [drawings, setDrawings] = useState<Array<{ id: string; name: string; version_number: number }>>([])
   const [description, setDescription] = useState("")
   const [assignedToType, setAssignedToType] = useState<AssignedToType>("contractor")
   const [assignedToId, setAssignedToId] = useState("")
   const [vendorName, setVendorName] = useState("")
   const [dueDate, setDueDate] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    getProjectDrawingDocuments(project.id)
+      .then(setDrawings)
+      .catch(() => setDrawings([]))
+  }, [open, project.id])
+
+  // Pre-fill from the snag being edited. A legacy free-text plan_reference
+  // (e.g. "ANA") is NOT a document id, so the dropdown must start empty rather
+  // than pre-selected with unusable text — the legacy value is shown as
+  // read-only context instead (see the helper text below the dropdown).
+  useEffect(() => {
+    if (!open) return
+    if (editSnag) {
+      setPhotoUrl(editSnag.photo_url)
+      setPhotoPreview(editSnag.photo_url)
+      setLocationDescription(editSnag.location_description)
+      setPlanReferenceDocumentId(editSnag.plan_reference_document_id ?? "")
+      setDescription(editSnag.description)
+      setAssignedToType(editSnag.assigned_to_type)
+      if (editSnag.assigned_to_type === 'vendor') {
+        setVendorName(editSnag.assigned_to_id)
+        setAssignedToId("")
+      } else {
+        setAssignedToId(editSnag.assigned_to_id)
+        setVendorName("")
+      }
+      setDueDate(editSnag.due_date ?? "")
+    } else {
+      setPhotoUrl(""); setPhotoPreview(""); setLocationDescription(""); setPlanReferenceDocumentId("")
+      setDescription(""); setAssignedToType("contractor"); setAssignedToId(""); setVendorName(""); setDueDate("")
+    }
+  }, [open, editSnag])
+
+  const legacyPlanReference = isEdit && !editSnag?.plan_reference_document_id ? editSnag?.plan_reference : null
 
   async function handlePhotoUpload(file: File) {
     if (!file) return
@@ -77,22 +120,33 @@ export function AddSnagSheet({ open, onOpenChange, project, projectContractors, 
 
     setSaving(true)
     try {
-      const created = await createSnagItem({
-        projectId: project.id,
-        photoUrl,
-        locationDescription: locationDescription.trim(),
-        planReference: planReference || undefined,
-        description: description.trim(),
-        assignedToType,
-        assignedToId: resolvedId,
-        dueDate: dueDate || undefined,
-      })
-      onCreated(created)
-      toast({ title: "Snag item added" })
+      if (isEdit && editSnag) {
+        const updated = await updateSnagItem(editSnag.id, {
+          photoUrl,
+          locationDescription: locationDescription.trim(),
+          planReferenceDocumentId: planReferenceDocumentId || null,
+          description: description.trim(),
+          assignedToType,
+          assignedToId: resolvedId,
+          dueDate: dueDate || null,
+        })
+        onUpdated?.(updated)
+        toast({ title: "Snag item updated" })
+      } else {
+        const created = await createSnagItem({
+          projectId: project.id,
+          photoUrl,
+          locationDescription: locationDescription.trim(),
+          planReferenceDocumentId: planReferenceDocumentId || null,
+          description: description.trim(),
+          assignedToType,
+          assignedToId: resolvedId,
+          dueDate: dueDate || undefined,
+        })
+        onCreated(created)
+        toast({ title: "Snag item added" })
+      }
       onOpenChange(false)
-      // reset
-      setPhotoUrl(""); setPhotoPreview(""); setLocationDescription(""); setPlanReference("")
-      setDescription(""); setAssignedToType("contractor"); setAssignedToId(""); setVendorName(""); setDueDate("")
     } catch (err) {
       toast({ title: String(err), variant: "destructive" })
     } finally {
@@ -104,7 +158,7 @@ export function AddSnagSheet({ open, onOpenChange, project, projectContractors, 
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-[500px] overflow-y-auto flex flex-col">
         <SheetHeader>
-          <SheetTitle>Add Snag Item</SheetTitle>
+          <SheetTitle>{isEdit ? "Edit Snag Item" : "Add Snag Item"}</SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-5 mt-4 flex-1">
@@ -152,7 +206,30 @@ export function AddSnagSheet({ open, onOpenChange, project, projectContractors, 
 
           <div>
             <label className="text-sm font-medium mb-1.5 block">Plan Reference</label>
-            <Input value={planReference} onChange={(e) => setPlanReference(e.target.value)} placeholder="e.g. Drawing A-101, Grid B3" className="focus-visible:ring-[#e94560]" />
+            <Select
+              value={planReferenceDocumentId || NO_PLAN_REFERENCE}
+              onValueChange={(v) => setPlanReferenceDocumentId(v === NO_PLAN_REFERENCE ? "" : v)}
+            >
+              <SelectTrigger className="focus:ring-[#e94560]">
+                <SelectValue placeholder={drawings.length === 0 ? "No drawings uploaded yet" : "Select a drawing…"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PLAN_REFERENCE}>None</SelectItem>
+                {drawings.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>{d.name} — v{d.version_number}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {drawings.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                No drawings-category documents found for this project yet.
+              </p>
+            )}
+            {legacyPlanReference && (
+              <p className="text-xs text-amber-600 mt-1">
+                Legacy reference on file: &ldquo;{legacyPlanReference}&rdquo; — select a drawing above to replace it.
+              </p>
+            )}
           </div>
 
           <div>
@@ -219,7 +296,13 @@ export function AddSnagSheet({ open, onOpenChange, project, projectContractors, 
             disabled={saving || uploading || !photoUrl}
             className="w-full bg-[#e94560] hover:bg-[#d63850] text-white"
           >
-            {saving ? "Adding…" : !photoUrl ? "Upload photo to continue" : "Add Snag Item"}
+            {saving
+              ? (isEdit ? "Saving…" : "Adding…")
+              : !photoUrl
+              ? "Upload photo to continue"
+              : isEdit
+              ? "Save Changes"
+              : "Add Snag Item"}
           </Button>
         </div>
       </SheetContent>

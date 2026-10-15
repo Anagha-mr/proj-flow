@@ -489,6 +489,7 @@ export interface Database {
           progress_percent: number
           is_recurring: boolean
           position: number
+          reviewer_id: string | null
           created_by: string | null
           created_at: string
           updated_at: string
@@ -509,6 +510,7 @@ export interface Database {
           progress_percent?: number
           is_recurring?: boolean
           position?: number
+          reviewer_id?: string | null
           created_by?: string | null
         }
         Update: {
@@ -523,6 +525,7 @@ export interface Database {
           progress_percent?: number
           is_recurring?: boolean
           position?: number
+          reviewer_id?: string | null
           parent_task_id?: string | null
         }
         Relationships: [
@@ -535,6 +538,56 @@ export interface Database {
           },
           {
             foreignKeyName: "tasks_studio_id_fkey"
+            columns: ["studio_id"]
+            isOneToOne: false
+            referencedRelation: "studios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      review_logs: {
+        Row: {
+          id: string
+          task_id: string
+          reviewer_id: string | null
+          studio_id: string
+          outcome: string
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          task_id: string
+          reviewer_id?: string | null
+          studio_id: string
+          outcome: string
+          notes?: string | null
+        }
+        Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: "review_logs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_logs_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_logs_studio_id_fkey"
             columns: ["studio_id"]
             isOneToOne: false
             referencedRelation: "studios"
@@ -1460,6 +1513,7 @@ export interface Database {
           photo_url: string
           location_description: string
           plan_reference: string | null
+          plan_reference_document_id: string | null
           description: string
           assigned_to_type: string
           assigned_to_id: string
@@ -1480,6 +1534,7 @@ export interface Database {
           photo_url: string
           location_description: string
           plan_reference?: string | null
+          plan_reference_document_id?: string | null
           description: string
           assigned_to_type: string
           assigned_to_id: string
@@ -1493,6 +1548,7 @@ export interface Database {
           photo_url?: string
           location_description?: string
           plan_reference?: string | null
+          plan_reference_document_id?: string | null
           description?: string
           assigned_to_type?: string
           assigned_to_id?: string
@@ -1503,7 +1559,15 @@ export interface Database {
           client_signed_off_at?: string | null
           client_signed_off_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "snag_items_plan_reference_document_id_fkey"
+            columns: ["plan_reference_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       ai_conversations: {
         Row: {

@@ -27,9 +27,10 @@ interface SnagDetailSheetProps {
   projectId: string
   onUpdated: (snag: SnagItem) => void
   onDeleted: (snagId: string) => void
+  onEdit?: (snag: SnagItem) => void
 }
 
-export function SnagDetailSheet({ open, onOpenChange, snag: initialSnag, canManage, studioId, projectId, onUpdated, onDeleted }: SnagDetailSheetProps) {
+export function SnagDetailSheet({ open, onOpenChange, snag: initialSnag, canManage, studioId, projectId, onUpdated, onDeleted, onEdit }: SnagDetailSheetProps) {
   const { toast } = useToast()
   const [snag, setSnag] = useState(initialSnag)
   const [resolutionPhotoUrl, setResolutionPhotoUrl] = useState("")
@@ -117,6 +118,7 @@ export function SnagDetailSheet({ open, onOpenChange, snag: initialSnag, canMana
   const canResolve = canManage && (snag.status === 'open' || snag.status === 'in_progress')
   const canReopen = canManage && snag.status === 'resolved'
   const canDelete = canManage && snag.status === 'open'
+  const canEdit = canManage && snag.status !== 'client_signed_off'
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -139,10 +141,10 @@ export function SnagDetailSheet({ open, onOpenChange, snag: initialSnag, canMana
           <section>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Details</h3>
             <dl className="grid grid-cols-2 gap-y-2 text-sm">
-              {snag.plan_reference && (
+              {snag.plan_reference_display && (
                 <>
                   <dt className="text-muted-foreground">Plan Reference</dt>
-                  <dd>{snag.plan_reference}</dd>
+                  <dd>{snag.plan_reference_display}</dd>
                 </>
               )}
               <dt className="text-muted-foreground">Assigned To</dt>
@@ -244,6 +246,9 @@ export function SnagDetailSheet({ open, onOpenChange, snag: initialSnag, canMana
 
           {/* Footer actions */}
           <div className="flex gap-2 pb-4">
+            {canEdit && onEdit && (
+              <Button variant="outline" size="sm" onClick={() => onEdit(snag)}>Edit</Button>
+            )}
             {canReopen && (
               <Button variant="outline" size="sm" onClick={handleReopen}>Reopen</Button>
             )}

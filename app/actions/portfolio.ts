@@ -2,6 +2,8 @@
 
 import { getAuthContext } from "./_auth"
 import { revalidatePath } from "next/cache"
+import { hasPermission } from "@/lib/permissions"
+import type { StudioRole } from "@/lib/supabase/types"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -199,7 +201,11 @@ export async function updateGalleryItem(
   itemId: string,
   updates: Partial<Pick<PortfolioGalleryItem, "caption" | "space_tag" | "include_in_export">>
 ): Promise<PortfolioGalleryItem> {
-  const { supabase, studioId } = await getAuthContext()
+  const { supabase, studioId, role } = await getAuthContext()
+
+  if (!hasPermission(role as StudioRole, "manage_portfolio")) {
+    throw new Error("Insufficient permissions")
+  }
 
   const { data: item } = await supabase
     .from("portfolio_gallery_items")

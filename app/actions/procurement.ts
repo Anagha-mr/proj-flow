@@ -483,6 +483,52 @@ export async function updateItemStatus(
   revalidatePath(`/dashboard/projects/${(item as any).project_id}`)
 }
 
+// ─── renameGroup ──────────────────────────────────────────────────────────────
+
+export async function renameGroup(input: {
+  scheduleId: string
+  itemIds: string[]
+  newName: string
+}): Promise<void> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const trimmed = input.newName.trim()
+  if (!trimmed) throw new Error("Group name cannot be empty")
+  if (input.itemIds.length === 0) throw new Error("No items in this group")
+
+  const { data: schedule } = await supabase
+    .from("procurement_schedules")
+    .select("project_id")
+    .eq("id", input.scheduleId)
+    .eq("studio_id", studioId)
+    .single()
+  if (!schedule) throw new Error("Schedule not found")
+
+  const { data: items } = await supabase
+    .from("procurement_items")
+    .select("id, room_or_category")
+    .eq("schedule_id", input.scheduleId)
+    .eq("studio_id", studioId)
+    .eq("is_archived", false)
+  if (!items) throw new Error("Schedule not found")
+
+  const itemIdSet = new Set(input.itemIds)
+  const collision = items.some(
+    (i) => !itemIdSet.has(i.id) && (i.room_or_category || "Uncategorised") === trimmed
+  )
+  if (collision) throw new Error(`A group named "${trimmed}" already exists in this schedule`)
+
+  const { error } = await supabase
+    .from("procurement_items")
+    .update({ room_or_category: trimmed })
+    .in("id", input.itemIds)
+    .eq("studio_id", studioId)
+    .eq("schedule_id", input.scheduleId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath(`/dashboard/projects/${schedule.project_id}`)
+}
+
 // ─── reorderItems ─────────────────────────────────────────────────────────────
 
 export async function reorderItems(scheduleId: string, orderedItemIds: string[]): Promise<void> {

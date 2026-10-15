@@ -3,6 +3,15 @@ import { createClient } from "@/lib/supabase/server"
 import puppeteer from "puppeteer"
 import type { SpecItem } from "@/app/actions/spec"
 
+const SURFACE_ORDER = ["floor", "wall", "ceiling", "joinery", "other"] as const
+const SURFACE_LABEL: Record<string, string> = {
+  floor: "Floor", wall: "Wall", ceiling: "Ceiling", joinery: "Joinery", other: "Other",
+}
+
+function cell(value: string | null | undefined): string {
+  return value && value.trim() ? value : "—"
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get("projectId")
@@ -36,19 +45,75 @@ export async function GET(req: NextRequest) {
     .eq("project_id", projectId)
     .eq("studio_id", profile.studio_id)
     .order("space", { ascending: true })
-    .order("surface", { ascending: true })
 
   const items = (specRows ?? []) as SpecItem[]
 
-  const { data: studio } = await supabase
-    .from("studios")
-    .select("name, logo_url, gstin")
-    .eq("id", profile.studio_id)
-    .single()
+  // Resolve the FK-linked fields (Stage 1/2's supplier_vendor_id,
+  // drawing_reference_document_id, linked_procurement_id) into display names —
+  // this route previously only read the legacy free-text supplier/drawing_reference
+  // columns, so rows edited via the new multi-row table rendered "—" even when a
+  // vendor/drawing was correctly linked.
+  const vendorIds = [...new Set(items.map((i) => i.supplier_vendor_id).filter(Boolean))] as string[]
+  const documentIds = [...new Set(items.map((i) => i.drawing_reference_document_id).filter(Boolean))] as string[]
+  const procurementIds = [...new Set(items.map((i) => i.linked_procurement_id).filter(Boolean))] as string[]
+
+  // vendors isn't part of the generated Supabase types (same as spec_items), so
+  // it's queried separately with an `any` cast rather than inside the typed
+  // Promise.all below — mixing the two in one array otherwise poisons inference
+  // for the strictly-typed results.
+  let vendorRows: Array<{ id: string; name: string }> = []
+  if (vendorIds.length) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase.from as any)("vendors").select("id, name").in("id", vendorIds)
+    vendorRows = data ?? []
+  }
+
+  const [{ data: documentRows }, { data: procurementRows }, { data: studio }] = await Promise.all([
+    documentIds.length
+      ? supabase.from("documents").select("id, name, version_number").in("id", documentIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string; version_number: number }> }),
+    procurementIds.length
+      ? supabase.from("procurement_items").select("id, name").in("id", procurementIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    supabase
+      .from("studios")
+      .select("name, logo_url, gstin, address_line1, address_line2, postcode, state_code")
+      .eq("id", profile.studio_id)
+      .single(),
+  ])
+
+  const vendorMap = new Map(
+    vendorRows.map((v: { id: string; name: string }): [string, string] => [v.id, v.name])
+  )
+  const documentMap = new Map(
+    (documentRows ?? []).map(
+      (d: { id: string; name: string; version_number: number }): [string, string] => [d.id, `${d.name} — v${d.version_number}`]
+    )
+  )
+  const procurementMap = new Map(
+    (procurementRows ?? []).map((p: { id: string; name: string }): [string, string] => [p.id, p.name])
+  )
+
+  function supplierDisplay(item: SpecItem): string {
+    if (item.supplier_vendor_id) return vendorMap.get(item.supplier_vendor_id) ?? "—"
+    return cell(item.supplier)
+  }
+
+  function drawingDisplay(item: SpecItem): string {
+    if (item.drawing_reference_document_id) return documentMap.get(item.drawing_reference_document_id) ?? "—"
+    return cell(item.drawing_reference)
+  }
+
+  function procurementDisplay(item: SpecItem): string {
+    if (!item.linked_procurement_id) return "—"
+    return procurementMap.get(item.linked_procurement_id) ?? "—"
+  }
 
   const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
 
-  // Group by space → surface
+  // Group by space, then by surface within each space (V6 spec: "grouped by
+  // space then surface"), following the same floor/wall/ceiling/joinery/other
+  // order used in the Spec tab UI rather than raw alphabetical order.
   const bySpace: Record<string, Record<string, SpecItem[]>> = {}
   for (const item of items) {
     if (!bySpace[item.space]) bySpace[item.space] = {}
@@ -56,16 +121,15 @@ export async function GET(req: NextRequest) {
     bySpace[item.space][item.surface].push(item)
   }
 
-  const surfaceLabel: Record<string, string> = {
-    floor: "Floor", wall: "Wall", ceiling: "Ceiling", joinery: "Joinery", other: "Other",
-  }
-
   let bodyHtml = ""
   for (const [space, surfaces] of Object.entries(bySpace)) {
     let surfaceRows = ""
-    for (const [surface, surfaceItems] of Object.entries(surfaces)) {
+    for (const surface of SURFACE_ORDER) {
+      const surfaceItems = surfaces[surface]
+      if (!surfaceItems?.length) continue
+
       surfaceRows += `
-        <tr><td colspan="6" style="padding:6px 8px 2px 16px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">${surfaceLabel[surface] ?? surface}</td></tr>
+        <tr><td colspan="6" style="padding:6px 8px 2px 16px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">${SURFACE_LABEL[surface] ?? surface}</td></tr>
       `
       for (const item of surfaceItems) {
         const revCount = (item.revisions ?? []).length
@@ -76,18 +140,22 @@ export async function GET(req: NextRequest) {
         const revNote = revCount > 0
           ? `<div style="font-size:9px;color:#94a3b8;font-style:italic;margin-top:2px;">Revised ${revCount} time${revCount > 1 ? "s" : ""} — last: ${latestDate}</div>`
           : ""
+        const procurementNote = item.linked_procurement_id
+          ? `<div style="font-size:9px;color:#6366f1;margin-top:2px;">From procurement: ${procurementDisplay(item)}</div>`
+          : ""
 
         surfaceRows += `
           <tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:8px 8px 8px 24px;vertical-align:top;">
-              <div style="font-size:11px;font-weight:600;">${item.material_name}</div>
+              <div style="font-size:11px;font-weight:600;">${cell(item.material_name)}</div>
               ${revNote}
+              ${procurementNote}
             </td>
-            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${item.finish_type ?? "—"}</td>
-            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${item.supplier ?? "—"}</td>
-            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${item.dimensions ?? "—"}</td>
-            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${item.location_notes ?? "—"}</td>
-            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${item.drawing_reference ?? "—"}</td>
+            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${cell(item.finish_type)}</td>
+            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${supplierDisplay(item)}</td>
+            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${cell(item.dimensions)}</td>
+            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${cell(item.location_notes)}</td>
+            <td style="padding:8px;font-size:11px;vertical-align:top;color:#475569;">${drawingDisplay(item)}</td>
           </tr>
         `
       }
@@ -117,6 +185,7 @@ export async function GET(req: NextRequest) {
         .header-left p { font-size:11px; opacity:0.7; margin-top:2px; }
         .header-right { text-align:right; }
         .header-right h2 { font-size:16px; font-weight:700; letter-spacing:1px; color:#e94560; }
+        .header-right p { font-size: 11px; opacity: 0.8; margin-top: 4px; }
         .divider { height:2px; background:#e94560; }
         .content { padding:24px 32px; }
         table { width:100%; border-collapse:collapse; }
@@ -131,6 +200,8 @@ export async function GET(req: NextRequest) {
           ${studio?.logo_url ? `<img src="${studio.logo_url}" style="height:40px;margin-bottom:6px;" />` : ""}
           <strong style="font-size:15px;">${studio?.name ?? "Studio"}</strong>
           ${studio?.gstin ? `<p>GSTIN: ${studio.gstin}</p>` : ""}
+          ${studio?.address_line1 ? `<p>${studio.address_line1}${studio.address_line2 ? ", " + studio.address_line2 : ""}</p>` : ""}
+          ${studio?.postcode ? `<p>${studio.postcode}${studio.state_code ? " · State: " + studio.state_code : ""}</p>` : ""}
         </div>
         <div class="header-right">
           <h2>MATERIAL &amp; FINISH SPECIFICATION</h2>
@@ -148,7 +219,7 @@ export async function GET(req: NextRequest) {
               <th>Supplier</th>
               <th>Dimensions</th>
               <th>Location Notes</th>
-              <th>Drawing Ref</th>
+              <th>Drawing Reference</th>
             </tr>
           </thead>
           <tbody>

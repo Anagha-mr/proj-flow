@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { MoreVertical, Eye, EyeOff, Trash2, X } from "lucide-react"
+import { MoreVertical, Eye, EyeOff, Trash2, X, Pencil } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,10 +23,12 @@ interface SiteUpdateCardProps {
   update: SiteUpdate
   onToggleVisible: () => void
   onDelete: () => void
+  onEdit: () => void
   canDelete: boolean
+  canEdit: boolean
 }
 
-export function SiteUpdateCard({ update, onToggleVisible, onDelete, canDelete }: SiteUpdateCardProps) {
+export function SiteUpdateCard({ update, onToggleVisible, onDelete, onEdit, canDelete, canEdit }: SiteUpdateCardProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [activePhoto, setActivePhoto] = useState<string>("")
 
@@ -92,7 +94,20 @@ export function SiteUpdateCard({ update, onToggleVisible, onDelete, canDelete }:
               </span>
             </div>
 
-            {/* 3-dot menu */}
+            <div className="flex items-center gap-0.5">
+            {canEdit && (
+              <button
+                onClick={onEdit}
+                title="Edit"
+                aria-label="Edit site update"
+                className="p-1 rounded hover:bg-gray-100 transition-colors"
+              >
+                <Pencil className="w-4 h-4 text-gray-500" />
+              </button>
+            )}
+
+            {/* 3-dot menu — canEdit is the manage_site check, which also governs visibility */}
+            {(canEdit || canDelete) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="p-1 rounded hover:bg-gray-100 transition-colors">
@@ -100,16 +115,18 @@ export function SiteUpdateCard({ update, onToggleVisible, onDelete, canDelete }:
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={onToggleVisible} className="cursor-pointer">
-                  {update.is_client_visible ? (
-                    <><EyeOff className="w-4 h-4 mr-2" /> Hide from client</>
-                  ) : (
-                    <><Eye className="w-4 h-4 mr-2" /> Show to client</>
-                  )}
-                </DropdownMenuItem>
+                {canEdit && (
+                  <DropdownMenuItem onClick={onToggleVisible} className="cursor-pointer">
+                    {update.is_client_visible ? (
+                      <><EyeOff className="w-4 h-4 mr-2" /> Hide from client</>
+                    ) : (
+                      <><Eye className="w-4 h-4 mr-2" /> Show to client</>
+                    )}
+                  </DropdownMenuItem>
+                )}
                 {canDelete && (
                   <>
-                    <DropdownMenuSeparator />
+                    {canEdit && <DropdownMenuSeparator />}
                     <DropdownMenuItem onClick={onDelete} className="cursor-pointer text-red-600 focus:text-red-600">
                       <Trash2 className="w-4 h-4 mr-2" /> Delete
                     </DropdownMenuItem>
@@ -117,6 +134,8 @@ export function SiteUpdateCard({ update, onToggleVisible, onDelete, canDelete }:
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
+            </div>
           </div>
         </div>
       </div>

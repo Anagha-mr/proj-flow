@@ -415,68 +415,77 @@ function SortableGalleryItem({
   const [spaceTag, setSpaceTag] = useState(item.space_tag ?? "")
 
   return (
-    <div ref={setNodeRef} style={style} className="group relative rounded-lg overflow-hidden border aspect-square bg-gray-100">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={item.image_url} alt={item.caption ?? ""} className="w-full h-full object-cover" />
+    <div ref={setNodeRef} style={style} className="flex flex-col gap-1">
+      <div className="group relative rounded-lg overflow-hidden border aspect-square bg-gray-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={item.image_url} alt={item.caption ?? ""} className="w-full h-full object-cover" />
 
-      {/* Hover overlay */}
-      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors" />
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors" />
 
-      {/* Drag handle */}
-      {canManage && (
-        <div
-          {...attributes}
-          {...listeners}
-          className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 bg-black/50 rounded"
-        >
-          <GripVertical className="w-3.5 h-3.5 text-white" />
-        </div>
-      )}
+        {/* Drag handle */}
+        {canManage && (
+          <div
+            {...attributes}
+            {...listeners}
+            className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 bg-black/50 rounded"
+          >
+            <GripVertical className="w-3.5 h-3.5 text-white" />
+          </div>
+        )}
 
-      {/* Include/exclude toggle */}
-      {canManage && (
-        <button
-          onClick={() => onToggleInclude(item)}
-          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black/50 rounded"
-          title={item.include_in_export ? "Exclude from export" : "Include in export"}
-        >
-          {item.include_in_export
-            ? <Eye className="w-3.5 h-3.5 text-green-400" />
-            : <EyeOff className="w-3.5 h-3.5 text-gray-300" />}
-        </button>
-      )}
+        {/* Include/exclude toggle */}
+        {canManage && (
+          <button
+            onClick={() => onToggleInclude(item)}
+            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black/50 rounded"
+            title={item.include_in_export ? "Exclude from export" : "Include in export"}
+          >
+            {item.include_in_export
+              ? <Eye className="w-3.5 h-3.5 text-green-400" />
+              : <EyeOff className="w-3.5 h-3.5 text-gray-300" />}
+          </button>
+        )}
 
-      {/* Delete button */}
-      {canManage && (
-        <button
-          onClick={() => onDelete(item)}
-          className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black/50 rounded"
-        >
-          <Trash2 className="w-3.5 h-3.5 text-red-400" />
-        </button>
-      )}
+        {/* Delete button */}
+        {canManage && (
+          <button
+            onClick={() => onDelete(item)}
+            className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black/50 rounded"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+          </button>
+        )}
 
-      {/* Caption + space tag on hover */}
-      <div className="absolute bottom-0 left-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 p-2 flex flex-col gap-1">
+        {/* Space tag on hover */}
+        {canManage && (
+          <div className="absolute bottom-0 left-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 p-2">
+            <input
+              type="text"
+              value={spaceTag}
+              onChange={(e) => setSpaceTag(e.target.value)}
+              onBlur={() => onUpdateSpaceTag(item, spaceTag)}
+              placeholder="Space tag..."
+              className="text-xs text-white/70 bg-transparent outline-none w-full placeholder:text-white/30"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Caption: editable below the image for managers, read-only text for everyone else */}
+      {canManage ? (
         <input
           type="text"
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
           onBlur={() => onUpdateCaption(item, caption)}
           placeholder="Caption..."
-          className="text-xs text-white bg-transparent border-b border-white/30 outline-none w-full placeholder:text-white/50"
-          onClick={(e) => e.stopPropagation()}
+          className="text-xs bg-transparent border-b border-transparent hover:border-input focus:border-input outline-none w-full px-0.5 placeholder:text-muted-foreground/50"
         />
-        <input
-          type="text"
-          value={spaceTag}
-          onChange={(e) => setSpaceTag(e.target.value)}
-          onBlur={() => onUpdateSpaceTag(item, spaceTag)}
-          placeholder="Space tag..."
-          className="text-xs text-white/70 bg-transparent outline-none w-full placeholder:text-white/30"
-          onClick={(e) => e.stopPropagation()}
-        />
-      </div>
+      ) : item.caption ? (
+        <p className="text-xs text-muted-foreground truncate px-0.5" title={item.caption}>{item.caption}</p>
+      ) : null}
     </div>
   )
 }

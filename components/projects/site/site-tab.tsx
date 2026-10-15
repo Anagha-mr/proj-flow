@@ -7,8 +7,11 @@ import { Input } from "@/components/ui/input"
 import { PermissionGate } from "@/components/PermissionGate"
 import { SiteUpdateCard } from "./site-update-card"
 import { UploadSiteUpdateSheet } from "./upload-site-update-sheet"
+import { EditSiteUpdateSheet } from "./edit-site-update-sheet"
 import { toggleClientVisible, deleteSiteUpdate } from "@/app/actions/site"
 import { useToast } from "@/hooks/use-toast"
+import { hasPermission } from "@/lib/permissions"
+import type { StudioRole } from "@/lib/supabase/types"
 import type { SiteUpdate } from "@/app/actions/site"
 
 type PhaseFilter = "all" | "before" | "during" | "after"
@@ -27,6 +30,7 @@ export function SiteTab({ project, initialUpdates, currentUser }: SiteTabProps) 
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all")
   const [spaceSearch, setSpaceSearch] = useState("")
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [editingUpdate, setEditingUpdate] = useState<SiteUpdate | null>(null)
   const [isLoaded] = useState(true)
 
   const filtered = updates.filter((u) => {
@@ -38,6 +42,7 @@ export function SiteTab({ project, initialUpdates, currentUser }: SiteTabProps) 
   const existingSpaceTags = [...new Set(updates.map((u) => u.space_tag).filter(Boolean))] as string[]
 
   const canDelete = currentUser.role === "owner" || currentUser.role === "senior_designer"
+  const canEdit = hasPermission(currentUser.role as StudioRole, "manage_site")
 
   async function handleToggleVisible(update: SiteUpdate) {
     try {
@@ -129,7 +134,9 @@ export function SiteTab({ project, initialUpdates, currentUser }: SiteTabProps) 
               update={update}
               onToggleVisible={() => handleToggleVisible(update)}
               onDelete={() => handleDelete(update.id)}
+              onEdit={() => setEditingUpdate(update)}
               canDelete={canDelete}
+              canEdit={canEdit}
             />
           ))}
         </div>
@@ -142,6 +149,14 @@ export function SiteTab({ project, initialUpdates, currentUser }: SiteTabProps) 
         projectId={project.id}
         studioId={project.studio_id}
         onCreated={(newUpdate) => setUpdates((prev) => [newUpdate, ...prev])}
+        existingSpaceTags={existingSpaceTags}
+      />
+
+      {/* Edit sheet */}
+      <EditSiteUpdateSheet
+        update={editingUpdate}
+        onOpenChange={(open) => { if (!open) setEditingUpdate(null) }}
+        onSaved={(saved) => setUpdates((prev) => prev.map((u) => u.id === saved.id ? saved : u))}
         existingSpaceTags={existingSpaceTags}
       />
     </div>

@@ -66,9 +66,8 @@ async function mergeOrderRows(
   if (rows.length === 0) return []
 
   const itemIds = [...new Set(rows.map((r) => r.procurement_item_id as string))]
-  const { data: items } = await supabase
-    .from("procurement_items")
-    .select("id, name, image_url, total_cost")
+  const { data: items } = await (supabase.from as AnyQuery)("procurement_items")
+    .select("id, name, image_url, product_image_url, total_cost")
     .in("id", itemIds)
   const itemMap = Object.fromEntries((items ?? []).map((i: Record<string, unknown>) => [i.id, i]))
 
@@ -84,7 +83,7 @@ async function mergeOrderRows(
   return rows.map((r) => ({
     ...(r as Omit<OrderTrackingRow, 'item_name' | 'item_image_url' | 'item_total_cost' | 'vendor_name'>),
     item_name: (itemMap[r.procurement_item_id as string] as Record<string, unknown>)?.name as string ?? "—",
-    item_image_url: (itemMap[r.procurement_item_id as string] as Record<string, unknown>)?.image_url as string ?? null,
+    item_image_url: ((itemMap[r.procurement_item_id as string] as Record<string, unknown>)?.product_image_url as string) ?? ((itemMap[r.procurement_item_id as string] as Record<string, unknown>)?.image_url as string) ?? null,
     item_total_cost: (itemMap[r.procurement_item_id as string] as Record<string, unknown>)?.total_cost as number ?? null,
     vendor_name: r.vendor_id ? (vendorMap[r.vendor_id as string] ?? null) : null,
   })) as OrderTrackingRow[]

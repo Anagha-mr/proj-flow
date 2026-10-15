@@ -129,6 +129,8 @@ export function TasksTab({ projectId, projectPhases, userRole, currentUserId, st
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       assignees: [],
+      reviewer_id: null,
+      reviewer: null,
       subtask_count: 0,
       attachment_count: 0,
     }

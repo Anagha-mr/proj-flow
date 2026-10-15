@@ -46,10 +46,10 @@ function ItemRow({ item, schedule, token }: ItemRowProps) {
   return (
     <div className="bg-white border border-gray-100 rounded-lg p-4 shadow-sm">
       <div className="flex gap-3">
-        {item.image_url && (
+        {(item.product_image_url || item.image_url) && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={item.image_url}
+            src={item.product_image_url || item.image_url || ""}
             alt={item.name}
             className="w-20 h-20 object-cover rounded-md shrink-0 bg-gray-50"
           />

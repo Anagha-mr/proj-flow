@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { getAuthContext } from "./_auth"
 import type { SiteUpdate } from "./site"
 
 export interface PortalProjectSummary {
@@ -379,5 +380,36 @@ export async function logPortalView(portalToken: string, projectId: string): Pro
     })
   } catch {
     // fire-and-forget — always silent
+  }
+}
+
+// ─── getClientPortalLinkForSend ───────────────────────────────
+// Studio-side, read-only: fetches the client's current portal token + WhatsApp
+// number so the UI can build a wa.me link. Never creates or changes tokens.
+export async function getClientPortalLinkForSend(clientId: string): Promise<
+  | { ok: true; name: string; whatsappNumber: string; portalToken: string }
+  | { ok: false; reason: "no_whatsapp" | "no_token" | "expired_token" | "not_found" }
+> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("name, whatsapp_number, portal_token, portal_token_expires_at")
+    .eq("id", clientId)
+    .eq("studio_id", studioId)
+    .single()
+
+  if (!client) return { ok: false, reason: "not_found" }
+  if (!client.whatsapp_number?.trim()) return { ok: false, reason: "no_whatsapp" }
+  if (!client.portal_token) return { ok: false, reason: "no_token" }
+  if (client.portal_token_expires_at && new Date(client.portal_token_expires_at) < new Date()) {
+    return { ok: false, reason: "expired_token" }
+  }
+
+  return {
+    ok: true,
+    name: client.name,
+    whatsappNumber: client.whatsapp_number.trim(),
+    portalToken: client.portal_token,
   }
 }

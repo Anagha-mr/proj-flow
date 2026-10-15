@@ -3,6 +3,8 @@
 import { getAuthContext } from "./_auth"
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { hasPermission } from "@/lib/permissions"
+import type { StudioRole } from "@/lib/supabase/types"
 
 export interface SiteUpdate {
   id: string
@@ -118,7 +120,11 @@ export async function createSiteUpdate(input: {
 }
 
 export async function toggleClientVisible(updateId: string, value: boolean): Promise<void> {
-  const { supabase, studioId } = await getAuthContext()
+  const { supabase, studioId, role } = await getAuthContext()
+
+  if (!hasPermission(role as StudioRole, "manage_site")) {
+    throw new Error("You don't have permission to change site update visibility")
+  }
 
   const { data: update } = await supabase
     .from("site_updates")
@@ -136,8 +142,59 @@ export async function toggleClientVisible(updateId: string, value: boolean): Pro
   revalidatePath(`/dashboard/projects/${update.project_id}`)
 }
 
+// Edits metadata only. Photos and submission audit fields (submitted_by_*, submitted_at)
+// are intentionally not accepted — photos are immutable once submitted.
+export async function updateSiteUpdate(
+  updateId: string,
+  input: {
+    spaceTag: string | null
+    phaseTag: 'before' | 'during' | 'after' | null
+    statusNote: string | null
+    isClientVisible: boolean
+  }
+): Promise<SiteUpdate> {
+  const { supabase, studioId, role } = await getAuthContext()
+
+  if (!hasPermission(role as StudioRole, "manage_site")) {
+    throw new Error("You don't have permission to edit site updates")
+  }
+
+  if (input.phaseTag !== null && !["before", "during", "after"].includes(input.phaseTag)) {
+    throw new Error("Invalid phase")
+  }
+
+  const { data: update } = await supabase
+    .from("site_updates")
+    .select("project_id, studio_id")
+    .eq("id", updateId)
+    .single()
+  if (!update || update.studio_id !== studioId) throw new Error("Not found")
+
+  const { data: updated, error } = await supabase
+    .from("site_updates")
+    .update({
+      space_tag: input.spaceTag?.trim() || null,
+      phase_tag: input.phaseTag,
+      status_note: input.statusNote?.trim() || null,
+      is_client_visible: input.isClientVisible,
+    })
+    .eq("id", updateId)
+    .eq("studio_id", studioId)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/dashboard/projects/${update.project_id}`)
+  return updated as unknown as SiteUpdate
+}
+
 export async function deleteSiteUpdate(updateId: string): Promise<void> {
-  const { supabase, studioId } = await getAuthContext()
+  const { supabase, studioId, role } = await getAuthContext()
+
+  if (!hasPermission(role as StudioRole, "manage_site")) {
+    throw new Error("You don't have permission to delete site updates")
+  }
 
   const { data: update } = await supabase
     .from("site_updates")

@@ -1,15 +1,21 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search, User, Mail, Phone, MessageCircle, ExternalLink, RefreshCw, Trash2, Pencil, MoreVertical } from "lucide-react"
+import { Plus, Search, User, Mail, Phone, MessageCircle, ExternalLink, RefreshCw, Trash2, Pencil, MoreVertical, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { ToastAction } from "@/components/ui/toast"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
 import type { StudioRole } from "@/lib/supabase/types"
 import { regeneratePortalToken, deleteClient } from "@/app/actions/projects"
+import { getClientPortalLinkForSend } from "@/app/actions/client-portal"
 import { AddClientSheet } from "./add-client-sheet"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,6 +37,8 @@ export function ClientsClient({ initialClients, currentUserRole }: ClientsClient
   const [editClient, setEditClient] = useState<ClientRow | null>(null)
   const [regenerateDialog, setRegenerateDialog] = useState<{ clientId: string; name: string; newToken?: string } | null>(null)
   const [regenerating, setRegenerating] = useState(false)
+  const [sendLinkDialog, setSendLinkDialog] = useState<{ name: string; whatsappNumber: string; portalToken: string } | null>(null)
+  const [checkingLinkFor, setCheckingLinkFor] = useState<string | null>(null)
 
   const filtered = clients.filter((c) => {
     const q = search.toLowerCase()
@@ -64,6 +72,55 @@ export function ClientsClient({ initialClients, currentUserRole }: ClientsClient
     } finally {
       setRegenerating(false)
     }
+  }
+
+  async function handleSendPortalLinkClick(client: ClientRow) {
+    setCheckingLinkFor(client.id)
+    try {
+      const result = await getClientPortalLinkForSend(client.id)
+      if (result.ok) {
+        setSendLinkDialog({ name: result.name, whatsappNumber: result.whatsappNumber, portalToken: result.portalToken })
+      } else if (result.reason === "no_whatsapp") {
+        toast({
+          title: "WhatsApp number needed",
+          description: `Add a WhatsApp number for ${client.name} to send their portal link.`,
+          variant: "destructive",
+          action: canManage ? (
+            <ToastAction altText="Edit client" onClick={() => { setEditClient(client); setShowAdd(true) }}>
+              Edit client
+            </ToastAction>
+          ) : undefined,
+        })
+      } else if (result.reason === "no_token" || result.reason === "expired_token") {
+        toast({
+          title: result.reason === "expired_token" ? "Portal link has expired" : "No portal link yet",
+          description: `Use "Regenerate Portal Link" for ${client.name} first, then send it.`,
+          variant: "destructive",
+        })
+      } else {
+        toast({ title: "Client not found", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Couldn't load the portal link. Please try again.", variant: "destructive" })
+    } finally {
+      setCheckingLinkFor(null)
+    }
+  }
+
+  function handleConfirmSendPortalLink() {
+    if (!sendLinkDialog) return
+    // wa.me needs digits only, including country code
+    const digits = sendLinkDialog.whatsappNumber.replace(/\D/g, "")
+    const portalUrl = `${window.location.origin}/portal/${sendLinkDialog.portalToken}`
+    const message = `Hi ${sendLinkDialog.name}, here is your project portal link: ${portalUrl}`
+    const win = window.open(`https://wa.me/${digits}?text=${encodeURIComponent(message)}`, "_blank")
+    setSendLinkDialog(null)
+    if (!win) {
+      toast({ title: "Couldn't open WhatsApp", description: "Your browser blocked the new tab. Allow pop-ups and try again.", variant: "destructive" })
+      return
+    }
+    win.opener = null
+    toast({ title: "WhatsApp opened", description: "Review the message and tap send in WhatsApp." })
   }
 
   async function handleDelete(clientId: string) {
@@ -139,6 +196,12 @@ export function ClientsClient({ initialClients, currentUserRole }: ClientsClient
                         <ExternalLink className="w-3.5 h-3.5 mr-2" /> View Portal
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem
+                      disabled={checkingLinkFor === client.id}
+                      onClick={() => handleSendPortalLinkClick(client)}
+                    >
+                      <Send className="w-3.5 h-3.5 mr-2" /> Send portal link to client
+                    </DropdownMenuItem>
                     {canManage && (
                       <DropdownMenuItem onClick={() => setRegenerateDialog({ clientId: client.id, name: client.name })}>
                         <RefreshCw className="w-3.5 h-3.5 mr-2" /> Regenerate Portal Link
@@ -195,6 +258,28 @@ export function ClientsClient({ initialClients, currentUserRole }: ClientsClient
         editClient={editClient}
         onSaved={handleSaved}
       />
+
+      {/* Send portal link confirmation */}
+      <AlertDialog open={!!sendLinkDialog} onOpenChange={(v) => { if (!v) setSendLinkDialog(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send portal link to client</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will open WhatsApp to send <strong>{sendLinkDialog?.name}</strong> their portal link at{" "}
+              <strong>{sendLinkDialog?.whatsappNumber}</strong>. Proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[#e94560] hover:bg-[#c73652] text-white"
+              onClick={handleConfirmSendPortalLink}
+            >
+              Open WhatsApp
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Regenerate portal link dialog */}
       <Dialog open={!!regenerateDialog} onOpenChange={(v) => { if (!v) setRegenerateDialog(null) }}>

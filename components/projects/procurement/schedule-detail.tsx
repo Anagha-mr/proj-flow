@@ -56,6 +56,7 @@ import {
   Share2,
   RefreshCw,
   Loader2,
+  Pencil,
 } from "lucide-react"
 import {
   getItems,
@@ -65,6 +66,7 @@ import {
   deleteItem,
   updateItem,
   reorderItems,
+  renameGroup,
   type ProcurementSchedule,
   type ProcurementItem,
   type ViewType,
@@ -304,6 +306,7 @@ function GroupSection({
   projectId,
   scheduleId,
   studioId,
+  canManage,
   refreshingItemId,
   onItemOpen,
   onItemArchive,
@@ -312,12 +315,14 @@ function GroupSection({
   onItemRefreshFromUrl,
   onDragEnd,
   onQuickAdd,
+  onRenameGroup,
 }: {
   groupName: string
   items: ProcurementItem[]
   projectId: string
   scheduleId: string
   studioId: string
+  canManage: boolean
   refreshingItemId: string | null
   onItemOpen: (item: ProcurementItem) => void
   onItemArchive: (itemId: string) => void
@@ -326,22 +331,94 @@ function GroupSection({
   onItemRefreshFromUrl: (item: ProcurementItem) => void
   onDragEnd: (groupName: string, event: DragEndEvent, items: ProcurementItem[]) => void
   onQuickAdd: (groupName: string, name: string) => void
+  onRenameGroup: (groupName: string, itemIds: string[], newName: string) => Promise<void>
 }) {
+  const { toast } = useToast()
   const [collapsed, setCollapsed] = useState(false)
   const [quickAddName, setQuickAddName] = useState("")
+  const [editingGroup, setEditingGroup] = useState(false)
+  const [groupNameVal, setGroupNameVal] = useState(groupName)
+  const [savingGroupName, setSavingGroupName] = useState(false)
   const groupTotal = items.reduce((sum, i) => sum + i.total_cost, 0)
+
+  useEffect(() => {
+    if (!editingGroup) setGroupNameVal(groupName)
+  }, [groupName, editingGroup])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  async function saveGroupName() {
+    if (savingGroupName) return
+    const trimmed = groupNameVal.trim()
+    if (trimmed === groupName) {
+      setGroupNameVal(groupName)
+      setEditingGroup(false)
+      return
+    }
+    if (!trimmed) {
+      toast({ title: "Group name cannot be empty", variant: "destructive" })
+      setGroupNameVal(groupName)
+      return
+    }
+    setSavingGroupName(true)
+    try {
+      await onRenameGroup(groupName, items.map((i) => i.id), trimmed)
+      setEditingGroup(false)
+    } catch {
+      setGroupNameVal(groupName)
+    } finally {
+      setSavingGroupName(false)
+    }
+  }
+
   return (
     <div className="mb-4">
-      <div className="flex items-center gap-2 py-2 cursor-pointer" onClick={() => setCollapsed((v) => !v)}>
-        {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        <span className="font-medium text-sm">{groupName}</span>
-        <span className="text-xs text-muted-foreground">
+      <div className="group flex items-center gap-2 py-2">
+        <div
+          className="flex items-center gap-2 cursor-pointer"
+          onClick={() => { if (!editingGroup) setCollapsed((v) => !v) }}
+        >
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </div>
+        {editingGroup ? (
+          <Input
+            autoFocus
+            value={groupNameVal}
+            disabled={savingGroupName}
+            onChange={(e) => setGroupNameVal(e.target.value)}
+            onBlur={saveGroupName}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); saveGroupName() }
+              if (e.key === "Escape") { setGroupNameVal(groupName); setEditingGroup(false) }
+            }}
+            className="h-6 text-sm font-medium w-48 focus-visible:ring-[#e94560]"
+          />
+        ) : (
+          <span
+            className="font-medium text-sm cursor-pointer"
+            onClick={() => setCollapsed((v) => !v)}
+            onDoubleClick={(e) => { if (canManage) { e.stopPropagation(); setEditingGroup(true) } }}
+          >
+            {groupName}
+          </span>
+        )}
+        {canManage && !editingGroup && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setEditingGroup(true) }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label="Rename group"
+          >
+            <Pencil className="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors" />
+          </button>
+        )}
+        <span
+          className="text-xs text-muted-foreground cursor-pointer"
+          onClick={() => { if (!editingGroup) setCollapsed((v) => !v) }}
+        >
           {items.length} item{items.length !== 1 ? "s" : ""} · {formatINR(groupTotal)}
         </span>
       </div>
@@ -824,6 +901,22 @@ export function ScheduleDetail({
     return groupItems(itemList)
   }
 
+  async function handleRenameGroup(oldGroupName: string, itemIds: string[], newName: string) {
+    try {
+      await renameGroup({ scheduleId: schedule.id, itemIds, newName })
+      const itemIdSet = new Set(itemIds)
+      setItems((prev) => prev.map((i) => itemIdSet.has(i.id) ? { ...i, room_or_category: newName } : i))
+      toast({ title: "Group renamed" })
+    } catch (err) {
+      toast({
+        title: "Failed to rename group",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      })
+      throw err
+    }
+  }
+
   async function handleAddGroup() {
     if (!newGroupName.trim()) return
     try {
@@ -986,6 +1079,7 @@ export function ScheduleDetail({
                   projectId={projectId}
                   scheduleId={schedule.id}
                   studioId={studioId}
+                  canManage={canManage}
                   refreshingItemId={refreshingItemId}
                   onItemOpen={(item) => setSelectedItem(item)}
                   onItemArchive={handleArchiveItem}
@@ -994,6 +1088,7 @@ export function ScheduleDetail({
                   onItemRefreshFromUrl={handleRefreshFromUrl}
                   onDragEnd={handleDragEnd}
                   onQuickAdd={handleQuickAdd}
+                  onRenameGroup={handleRenameGroup}
                 />
               ))}
 

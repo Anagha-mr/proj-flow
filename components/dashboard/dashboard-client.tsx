@@ -76,7 +76,7 @@ export function DashboardClient({
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {greeting}, {firstName} 👋
+            {greeting}, {firstName} 
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Here&rsquo;s your studio at a glance

@@ -339,10 +339,11 @@ export function KanbanView({ tasks, projectPhases, studioUsers: _, onTaskClick, 
     // Optimistic update
     onStatusChange(activeTaskId, targetStatus)
 
-    updateTaskStatus(activeTaskId, targetStatus).catch(() => {
+    updateTaskStatus(activeTaskId, targetStatus).catch((e: unknown) => {
       // Revert
       onStatusChange(activeTaskId, activeTask.status)
-      toast({ title: "Failed to update task status", variant: "destructive" })
+      const msg = e instanceof Error ? e.message : "Failed to update task status"
+      toast({ title: msg, variant: "destructive" })
     })
   }
 

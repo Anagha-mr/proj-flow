@@ -41,6 +41,7 @@ export function SnagTab({ project, initialSnags, currentUser, projectContractors
   const [snags, setSnags] = useState<SnagItem[]>(initialSnags)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [addOpen, setAddOpen] = useState(false)
+  const [editSnag, setEditSnag] = useState<SnagItem | null>(null)
   const [detailSnag, setDetailSnag] = useState<SnagItem | null>(null)
   const [loaded] = useState(true)
 
@@ -160,12 +161,18 @@ export function SnagTab({ project, initialSnags, currentUser, projectContractors
       )}
 
       <AddSnagSheet
-        open={addOpen}
-        onOpenChange={setAddOpen}
+        open={addOpen || !!editSnag}
+        onOpenChange={(v) => { if (!v) { setAddOpen(false); setEditSnag(null) } }}
         project={project}
         projectContractors={projectContractors}
         studioUsers={studioUsers}
+        editSnag={editSnag}
         onCreated={(s) => setSnags((prev) => [s, ...prev])}
+        onUpdated={(s) => {
+          setSnags((prev) => prev.map((x) => x.id === s.id ? s : x))
+          setDetailSnag((prev) => (prev && prev.id === s.id ? s : prev))
+          setEditSnag(null)
+        }}
       />
 
       {detailSnag && (
@@ -184,6 +191,7 @@ export function SnagTab({ project, initialSnags, currentUser, projectContractors
             setSnags((prev) => prev.filter((x) => x.id !== id))
             setDetailSnag(null)
           }}
+          onEdit={(s) => setEditSnag(s)}
         />
       )}
     </div>

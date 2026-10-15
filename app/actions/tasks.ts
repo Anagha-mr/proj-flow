@@ -31,8 +31,20 @@ export type TaskWithDetails = {
   created_at: string
   updated_at: string
   assignees: TaskAssignee[]
+  reviewer_id: string | null
+  reviewer: TaskAssignee | null
   subtask_count: number
   attachment_count: number
+}
+
+export type ReviewLogEntry = {
+  id: string
+  task_id: string
+  reviewer_id: string | null
+  reviewer: { id: string; name: string } | null
+  outcome: string
+  notes: string | null
+  created_at: string
 }
 
 export type TaskComment = {
@@ -65,8 +77,9 @@ async function enrichTasks(supabase: any, studioId: string, rawTasks: any[]): Pr
   if (!rawTasks.length) return []
 
   const taskIds = rawTasks.map((t) => t.id)
+  const reviewerIds = [...new Set(rawTasks.map((t) => t.reviewer_id).filter(Boolean))]
 
-  const [{ data: subtasksData }, { data: attachmentsData }] = await Promise.all([
+  const [{ data: subtasksData }, { data: attachmentsData }, { data: reviewersData }] = await Promise.all([
     supabase
       .from("tasks")
       .select("parent_task_id")
@@ -77,6 +90,9 @@ async function enrichTasks(supabase: any, studioId: string, rawTasks: any[]): Pr
       .select("task_id")
       .in("task_id", taskIds)
       .eq("studio_id", studioId),
+    reviewerIds.length
+      ? supabase.from("users").select("id, name, profile_photo_url").in("id", reviewerIds)
+      : Promise.resolve({ data: [] }),
   ])
 
   const subtaskCountMap = new Map<string, number>()
@@ -89,6 +105,9 @@ async function enrichTasks(supabase: any, studioId: string, rawTasks: any[]): Pr
   attachmentsData?.forEach((a: { task_id: string }) => {
     attachmentCountMap.set(a.task_id, (attachmentCountMap.get(a.task_id) ?? 0) + 1)
   })
+
+  const reviewerMap = new Map<string, TaskAssignee>()
+  reviewersData?.forEach((u: TaskAssignee) => reviewerMap.set(u.id, u))
 
   return rawTasks.map((task) => ({
     id: task.id,
@@ -113,6 +132,8 @@ async function enrichTasks(supabase: any, studioId: string, rawTasks: any[]): Pr
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((ta: any) => ta.user)
       .filter(Boolean) as TaskAssignee[],
+    reviewer_id: task.reviewer_id ?? null,
+    reviewer: task.reviewer_id ? reviewerMap.get(task.reviewer_id) ?? null : null,
     subtask_count: subtaskCountMap.get(task.id) ?? 0,
     attachment_count: attachmentCountMap.get(task.id) ?? 0,
   }))
@@ -128,7 +149,7 @@ export async function getTasks(projectId: string): Promise<TaskWithDetails[]> {
     .select(`
       id, studio_id, project_id, parent_task_id, title, description,
       status, priority, phase_tag, room_tag, start_date, due_date,
-      progress_percent, is_recurring, position, created_by, created_at, updated_at
+      progress_percent, is_recurring, position, reviewer_id, created_by, created_at, updated_at
     `)
     .eq("project_id", projectId)
     .eq("studio_id", studioId)
@@ -175,7 +196,7 @@ export async function getSubtasks(parentTaskId: string): Promise<TaskWithDetails
     .select(`
       id, studio_id, project_id, parent_task_id, title, description,
       status, priority, phase_tag, room_tag, start_date, due_date,
-      progress_percent, is_recurring, position, created_by, created_at, updated_at
+      progress_percent, is_recurring, position, reviewer_id, created_by, created_at, updated_at
     `)
     .eq("parent_task_id", parentTaskId)
     .eq("studio_id", studioId)
@@ -259,7 +280,7 @@ export async function createTask(data: {
       created_by: userId,
       position,
     })
-    .select("id, studio_id, project_id, parent_task_id, title, description, status, priority, phase_tag, room_tag, start_date, due_date, progress_percent, is_recurring, position, created_by, created_at, updated_at")
+    .select("id, studio_id, project_id, parent_task_id, title, description, status, priority, phase_tag, room_tag, start_date, due_date, progress_percent, is_recurring, position, reviewer_id, created_by, created_at, updated_at")
     .single()
 
   if (error) throw new Error(error.message)
@@ -291,6 +312,8 @@ export async function createTask(data: {
     position: task.position ?? 0,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     assignees: (assigneesRaw ?? []).map((a: any) => a.user).filter(Boolean),
+    reviewer_id: task.reviewer_id ?? null,
+    reviewer: null,
     subtask_count: 0,
     attachment_count: 0,
   }
@@ -303,6 +326,41 @@ export async function createTask(data: {
   }
 
   return result
+}
+
+// ─── Review workflow chokepoint ────────────────────────────────
+// Single place status transitions are validated + logged, so the rule applies
+// no matter which UI triggered the change (detail panel status select, or
+// Kanban drag-drop via updateTaskStatus below).
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function applyReviewWorkflowRules(supabase: any, studioId: string, taskId: string, newStatus: string, pendingReviewerId: string | null | undefined, reviewNotes: string | null | undefined) {
+  const { data: current, error } = await supabase
+    .from("tasks")
+    .select("status, reviewer_id")
+    .eq("id", taskId)
+    .eq("studio_id", studioId)
+    .single()
+
+  if (error || !current) throw new Error("Task not found")
+
+  const effectiveReviewerId = pendingReviewerId !== undefined ? pendingReviewerId : current.reviewer_id
+
+  if (newStatus === "review" && !effectiveReviewerId) {
+    throw new Error("Assign a reviewer before moving this task to Review")
+  }
+
+  if (current.status === "review" && (newStatus === "done" || newStatus === "in_progress")) {
+    const outcome = newStatus === "done" ? "approved" : "changes_requested"
+    const { error: logError } = await supabase.from("review_logs").insert({
+      task_id: taskId,
+      reviewer_id: current.reviewer_id,
+      studio_id: studioId,
+      outcome,
+      notes: reviewNotes ?? null,
+    })
+    if (logError) throw new Error(logError.message)
+  }
 }
 
 // ─── updateTask ───────────────────────────────────────────────
@@ -320,12 +378,20 @@ export async function updateTask(
     due_date: string | null
     progress_percent: number
     parent_task_id: string | null
+    reviewer_id: string | null
+    review_notes: string | null
   }>
 ) {
   const { supabase, studioId } = await getAuthContext()
 
+  const { review_notes, ...updateData } = data
+
+  if (updateData.status) {
+    await applyReviewWorkflowRules(supabase, studioId, id, updateData.status, updateData.reviewer_id, review_notes)
+  }
+
   let positionOverride: number | undefined
-  if (data.status) {
+  if (updateData.status) {
     const { data: maxPosRow } = await supabase
       .from("tasks")
       .select("position, project_id")
@@ -339,7 +405,7 @@ export async function updateTask(
         .select("position")
         .eq("studio_id", studioId)
         .eq("project_id", maxPosRow.project_id)
-        .eq("status", data.status)
+        .eq("status", updateData.status)
         .order("position", { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -353,7 +419,7 @@ export async function updateTask(
 
   const { data: updated, error } = await supabase
     .from("tasks")
-    .update(data)
+    .update(updateData)
     .eq("id", id)
     .eq("studio_id", studioId)
     .select("project_id")
@@ -363,8 +429,8 @@ export async function updateTask(
   revalidatePath(`/dashboard/projects/${updated.project_id}`)
 
   // Fire-and-forget calendar sync for due date changes
-  if ('due_date' in data) {
-    if (data.due_date) {
+  if ('due_date' in updateData) {
+    if (updateData.due_date) {
       import("./calendar").then(({ pushToGoogleCalendar }) =>
         pushToGoogleCalendar("task_due_date", id).catch(() => {})
       ).catch(() => {})
@@ -403,8 +469,15 @@ export async function deleteTask(id: string) {
 
 // ─── updateTaskStatus ─────────────────────────────────────────
 
-export async function updateTaskStatus(id: string, status: string, newPosition?: number) {
+export async function updateTaskStatus(
+  id: string,
+  status: string,
+  newPosition?: number,
+  reviewNotes?: string | null
+) {
   const { supabase, studioId } = await getAuthContext()
+
+  await applyReviewWorkflowRules(supabase, studioId, id, status, undefined, reviewNotes)
 
   let position = newPosition
   if (position === undefined) {
@@ -856,4 +929,30 @@ export async function getMyTasksToday(): Promise<MyTask[]> {
   })
 
   return result.slice(0, 10)
+}
+
+// ─── Bug #27: review_logs ───────────────────────────────────────────────────
+
+export async function getReviewLogs(taskId: string): Promise<ReviewLogEntry[]> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data, error } = await supabase
+    .from("review_logs")
+    .select("id, task_id, reviewer_id, outcome, notes, created_at, reviewer:users(id, name)")
+    .eq("task_id", taskId)
+    .eq("studio_id", studioId)
+    .order("created_at", { ascending: false })
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    task_id: r.task_id,
+    reviewer_id: r.reviewer_id,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    reviewer: (r.reviewer as any) ?? null,
+    outcome: r.outcome,
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+  }))
 }

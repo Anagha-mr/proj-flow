@@ -202,9 +202,9 @@ export function ApprovalsTab({ projectId, userRole }: ApprovalsTabProps) {
               >
                 {/* Thumbnail */}
                 <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                  {item.image_url ? (
+                  {(item.product_image_url || item.image_url) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                    <img src={item.product_image_url || item.image_url || ""} alt={item.name} className="w-full h-full object-cover" />
                   ) : (
                     <Package className="w-4 h-4 text-muted-foreground" />
                   )}

@@ -20,10 +20,14 @@ export interface SpecItem {
   surface: "floor" | "wall" | "ceiling" | "joinery" | "other"
   material_name: string
   finish_type: string | null
+  /** @deprecated legacy free-text supplier, kept for pre-Sprint-25 rows. Prefer supplier_vendor_id. */
   supplier: string | null
+  supplier_vendor_id: string | null
   location_notes: string | null
   dimensions: string | null
+  /** @deprecated legacy free-text drawing ref, kept for pre-Sprint-25 rows. Prefer drawing_reference_document_id. */
   drawing_reference: string | null
+  drawing_reference_document_id: string | null
   linked_procurement_id: string | null
   revisions: SpecRevision[]
   created_by_id: string | null
@@ -40,9 +44,11 @@ const EDITABLE_FIELDS = [
   "material_name",
   "finish_type",
   "supplier",
+  "supplier_vendor_id",
   "location_notes",
   "dimensions",
   "drawing_reference",
+  "drawing_reference_document_id",
   "linked_procurement_id",
 ] as const
 
@@ -72,13 +78,15 @@ export async function createSpecItem(input: {
   projectId: string
   space: string
   surface: SpecItem["surface"]
-  materialName: string
+  materialName?: string
   finishType?: string
   supplier?: string
+  supplierVendorId?: string | null
   locationNotes?: string
   dimensions?: string
   drawingReference?: string
-  linkedProcurementId?: string
+  drawingReferenceDocumentId?: string | null
+  linkedProcurementId?: string | null
 }): Promise<SpecItem> {
   const { supabase, userId, studioId } = await getAuthContext()
 
@@ -88,12 +96,14 @@ export async function createSpecItem(input: {
       project_id: input.projectId,
       space: input.space,
       surface: input.surface,
-      material_name: input.materialName,
+      material_name: input.materialName ?? "",
       finish_type: input.finishType ?? null,
       supplier: input.supplier ?? null,
+      supplier_vendor_id: input.supplierVendorId ?? null,
       location_notes: input.locationNotes ?? null,
       dimensions: input.dimensions ?? null,
       drawing_reference: input.drawingReference ?? null,
+      drawing_reference_document_id: input.drawingReferenceDocumentId ?? null,
       linked_procurement_id: input.linkedProcurementId ?? null,
       created_by_id: userId,
       revisions: [],
@@ -109,7 +119,7 @@ export async function createSpecItem(input: {
 export async function updateSpecItem(
   itemId: string,
   updates: Partial<Omit<SpecItem, "id" | "studio_id" | "project_id" | "revisions" | "created_at" | "updated_at">>,
-  reason: string
+  reason: string = ""
 ): Promise<SpecItem> {
   const { supabase, userId, studioId } = await getAuthContext()
 
@@ -130,9 +140,11 @@ export async function updateSpecItem(
     material_name: "material_name",
     finish_type: "finish_type",
     supplier: "supplier",
+    supplier_vendor_id: "supplier_vendor_id",
     location_notes: "location_notes",
     dimensions: "dimensions",
     drawing_reference: "drawing_reference",
+    drawing_reference_document_id: "drawing_reference_document_id",
     linked_procurement_id: "linked_procurement_id",
     created_by_id: "created_by_id",
   }
@@ -173,7 +185,7 @@ export async function updateSpecItem(
 export async function importFromProcurement(
   projectId: string,
   scheduleId: string
-): Promise<SpecItem[]> {
+): Promise<{ imported: SpecItem[]; skippedCount: number }> {
   const { supabase, userId, studioId } = await getAuthContext()
 
   const { data: project } = await supabase
@@ -184,25 +196,52 @@ export async function importFromProcurement(
     .single()
   if (!project) throw new Error("Project not found")
 
-  const { data: procItems } = await supabase
-    .from("procurement_items")
+  // NOTE: curation_status / client_approval_status live on the separate
+  // procurement_item_status table (one row per item), not on procurement_items
+  // itself. The pre-Stage-2 version of this function filtered
+  // `.in("curation_status", [...])` directly on procurement_items, which has no
+  // such column — every import call errored with "column does not exist".
+  const { data: procItems } = await (supabase.from as AnyQuery)("procurement_items")
     .select("*")
     .eq("schedule_id", scheduleId)
-    .in("curation_status", ["internally_approved", "client_review", "approved"])
+    .eq("studio_id", studioId)
 
   const items = (procItems ?? []) as Array<{
     id: string
     room_or_category: string | null
     name: string
-    finish?: string | null
-    supplier_name?: string | null
-    dimensions_length?: number | null
-    dimensions_height?: number | null
-    dimensions_depth?: number | null
+    finish: string | null
+    material_finish: string | null
+    dimensions: string | null
+    dimensions_length: number | null
+    dimensions_height: number | null
+    dimensions_depth: number | null
+    supplier_id: string | null
+    supplier_name: string | null
   }>
 
-  if (items.length === 0) return []
+  if (items.length === 0) return { imported: [], skippedCount: 0 }
 
+  const itemIds = items.map((i) => i.id)
+  const { data: statusRows } = await supabase
+    .from("procurement_item_status")
+    .select("item_id, curation_status, client_approval_status")
+    .in("item_id", itemIds)
+    .eq("studio_id", studioId)
+
+  // Per V6 spec: pull items that are EITHER internally-approved OR client-approved
+  // (two independent status tracks) — not requiring both.
+  const approvedIds = new Set(
+    (statusRows ?? [])
+      .filter((s) => s.curation_status === "internally_approved" || s.client_approval_status === "approved")
+      .map((s) => s.item_id)
+  )
+
+  const approvedItems = items.filter((item) => approvedIds.has(item.id))
+  if (approvedItems.length === 0) return { imported: [], skippedCount: 0 }
+
+  // Skip items already imported into this project (linked_procurement_id already
+  // set on an existing spec row) rather than creating a duplicate row.
   const { data: existingSpecs } = await (supabase.from as AnyQuery)("spec_items")
     .select("linked_procurement_id")
     .eq("project_id", projectId)
@@ -211,30 +250,34 @@ export async function importFromProcurement(
 
   const alreadyLinked = new Set((existingSpecs ?? []).map((s: { linked_procurement_id: string }) => s.linked_procurement_id))
 
-  const toInsert = items
-    .filter((item) => !alreadyLinked.has(item.id))
-    .map((item) => {
-      const dimParts = [item.dimensions_length, item.dimensions_height, item.dimensions_depth]
-        .filter((v) => v != null)
-        .map(String)
-      const dimensions = dimParts.length > 0 ? dimParts.join("×") + "mm" : null
+  const newItems = approvedItems.filter((item) => !alreadyLinked.has(item.id))
+  const skippedCount = approvedItems.length - newItems.length
 
-      return {
-        studio_id: studioId,
-        project_id: projectId,
-        space: item.room_or_category ?? "Uncategorised",
-        surface: "other",
-        material_name: item.name,
-        finish_type: item.finish ?? null,
-        supplier: item.supplier_name ?? null,
-        dimensions,
-        linked_procurement_id: item.id,
-        created_by_id: userId,
-        revisions: [],
-      }
-    })
+  const toInsert = newItems.map((item) => {
+    const dimParts = [item.dimensions_length, item.dimensions_height, item.dimensions_depth]
+      .filter((v) => v != null)
+      .map(String)
+    const dimensions = item.dimensions ?? (dimParts.length > 0 ? dimParts.join("×") + "mm" : null)
 
-  if (toInsert.length === 0) return []
+    return {
+      studio_id: studioId,
+      project_id: projectId,
+      // Procurement items aren't necessarily grouped by room — default the space
+      // so the designer can reassign it post-import, per V6's "reviews and adjusts".
+      space: item.room_or_category ?? "Unassigned",
+      surface: "other",
+      material_name: item.name,
+      finish_type: item.material_finish ?? item.finish ?? null,
+      supplier: item.supplier_name ?? null,
+      supplier_vendor_id: item.supplier_id ?? null,
+      dimensions,
+      linked_procurement_id: item.id,
+      created_by_id: userId,
+      revisions: [],
+    }
+  })
+
+  if (toInsert.length === 0) return { imported: [], skippedCount }
 
   const { data: inserted, error } = await (supabase.from as AnyQuery)("spec_items")
     .insert(toInsert)
@@ -242,7 +285,7 @@ export async function importFromProcurement(
 
   if (error) throw new Error(error.message)
   revalidatePath(`/dashboard/projects/${projectId}`)
-  return (inserted ?? []) as SpecItem[]
+  return { imported: (inserted ?? []) as SpecItem[], skippedCount }
 }
 
 export async function deleteSpecItem(itemId: string): Promise<void> {
@@ -273,6 +316,41 @@ export async function getProcurementSchedulesForProject(projectId: string) {
     .eq("project_id", projectId)
     .eq("studio_id", studioId)
     .order("created_at", { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Array<{ id: string; name: string }>
+}
+
+// ─── Bug #28: dropdown sources for the spec table (drawings, procurement items) ─
+
+export async function getDrawingDocumentsForProject(
+  projectId: string
+): Promise<Array<{ id: string; name: string }>> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data, error } = await supabase
+    .from("documents")
+    .select("id, name")
+    .eq("project_id", projectId)
+    .eq("studio_id", studioId)
+    .eq("category", "Drawings")
+    .order("name", { ascending: true })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Array<{ id: string; name: string }>
+}
+
+export async function getProcurementItemsForProject(
+  projectId: string
+): Promise<Array<{ id: string; name: string }>> {
+  const { supabase, studioId } = await getAuthContext()
+
+  const { data, error } = await supabase
+    .from("procurement_items")
+    .select("id, name")
+    .eq("project_id", projectId)
+    .eq("studio_id", studioId)
+    .order("name", { ascending: true })
 
   if (error) throw new Error(error.message)
   return (data ?? []) as Array<{ id: string; name: string }>

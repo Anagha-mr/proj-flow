@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Flag, Package, ExternalLink, Trash2, Archive, RefreshCw } from "lucide-react"
+import { Flag, ExternalLink, Trash2, Archive, RefreshCw } from "lucide-react"
 import { updateItem, updateItemStatus, deleteItem, archiveItem, type ProcurementItem, type CurationStatus, type ClientApprovalStatus, type ProcurementStatus, type PaymentStatus } from "@/app/actions/procurement"
 import { refreshProductFromURL } from "@/app/actions/product-discovery"
 import { useToast } from "@/hooks/use-toast"
@@ -98,7 +98,6 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
   const [material, setMaterial] = useState(item.material ?? "")
   const [quantity, setQuantity] = useState(item.quantity.toString())
   const [unitCost, setUnitCost] = useState(item.unit_cost.toString())
-  const [imageUrl, setImageUrl] = useState(item.image_url ?? "")
   // Sprint 21 new fields
   const [productImageUrl, setProductImageUrl] = useState(item.product_image_url ?? "")
   const [materialFinish, setMaterialFinish] = useState(item.material_finish ?? "")
@@ -159,7 +158,6 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
     const c = parseFloat(unitCost) || 0
     if (c !== item.unit_cost) triggerSave({ unit_cost: c })
   }
-  function onBlurImageUrl() { if (imageUrl !== (item.image_url ?? "")) triggerSave({ image_url: imageUrl }) }
   function onBlurProductImageUrl() { if (productImageUrl !== (item.product_image_url ?? "")) triggerSave({ product_image_url: productImageUrl }) }
   function onBlurMaterialFinish() { if (materialFinish !== (item.material_finish ?? "")) triggerSave({ material_finish: materialFinish }) }
   function onBlurDimensionsText() { if (dimensions !== (item.dimensions ?? "")) triggerSave({ dimensions }) }
@@ -204,7 +202,6 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
         material: material || null,
         quantity: parseFloat(quantity) || 1,
         unit_cost: parseFloat(unitCost) || 0,
-        image_url: imageUrl || null,
         product_image_url: productImageUrl || null,
         material_finish: materialFinish || null,
         dimensions: dimensions || null,
@@ -262,28 +259,6 @@ export function ItemDetailPanel({ open, onOpenChange, item, studioId, userRole }
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                 Product Info
               </p>
-
-              {/* Image */}
-              <div className="mb-3">
-                <label className="text-sm font-medium mb-1 block">Image URL</label>
-                <div className="flex gap-2">
-                  <div className="w-16 h-16 rounded bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                    {imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="w-6 h-6 text-muted-foreground" />
-                    )}
-                  </div>
-                  <Input
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    onBlur={onBlurImageUrl}
-                    placeholder="https://..."
-                    className="focus-visible:ring-[#e94560] text-sm"
-                  />
-                </div>
-              </div>
 
               <div className="flex flex-col gap-3">
                 <div>

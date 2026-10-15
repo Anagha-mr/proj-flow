@@ -1,15 +1,24 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { FileText, Upload, ExternalLink, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { hasPermission } from "@/lib/permissions"
 import type { StudioRole } from "@/lib/supabase/types"
 import { useToast } from "@/hooks/use-toast"
-import { importFromProcurement, getProcurementSchedulesForProject, type SpecItem } from "@/app/actions/spec"
+import {
+  importFromProcurement,
+  getProcurementSchedulesForProject,
+  getDrawingDocumentsForProject,
+  getProcurementItemsForProject,
+  createSpecItem,
+  updateSpecItem,
+  type SpecItem,
+} from "@/app/actions/spec"
+import { getVendors } from "@/app/actions/vendors"
 import { SpecTable } from "./spec-table"
-import { SpecItemSheet } from "./spec-item-sheet"
 
 interface SpecTabProps {
   project: { id: string; studio_id: string; name: string }
@@ -24,32 +33,35 @@ export function SpecTab({ project, initialItems, currentUser }: SpecTabProps) {
 
   const [items, setItems] = useState<SpecItem[]>(initialItems)
   const [spaceFilter, setSpaceFilter] = useState("all")
-  const [editItem, setEditItem] = useState<SpecItem | null>(null)
-  const [showSheet, setShowSheet] = useState(false)
-  const [defaultSpace, setDefaultSpace] = useState("")
   const [importing, setImporting] = useState(false)
   const [scheduleId, setScheduleId] = useState("")
   const [schedules, setSchedules] = useState<Array<{ id: string; name: string }>>([])
   const [schedulesLoaded, setSchedulesLoaded] = useState(false)
   const [showImportSelect, setShowImportSelect] = useState(false)
+  const [newSpaceName, setNewSpaceName] = useState("")
+  const [addingSpace, setAddingSpace] = useState(false)
+
+  const [vendors, setVendors] = useState<Array<{ id: string; name: string }>>([])
+  const [drawings, setDrawings] = useState<Array<{ id: string; name: string }>>([])
+  const [procurementItems, setProcurementItems] = useState<Array<{ id: string; name: string }>>([])
+
+  useEffect(() => {
+    Promise.all([
+      getVendors().catch(() => []),
+      getDrawingDocumentsForProject(project.id).catch(() => []),
+      getProcurementItemsForProject(project.id).catch(() => []),
+    ]).then(([v, d, p]) => {
+      setVendors(v.map((x) => ({ id: x.id, name: x.name })))
+      setDrawings(d)
+      setProcurementItems(p)
+    })
+  }, [project.id])
 
   const allSpaces = [...new Set(items.map((i) => i.space))].sort()
 
   const filteredItems = spaceFilter === "all"
     ? items
     : items.filter((i) => i.space === spaceFilter)
-
-  function handleEdit(item: SpecItem) {
-    setEditItem(item)
-    setDefaultSpace("")
-    setShowSheet(true)
-  }
-
-  function handleAddToSpace(space: string) {
-    setEditItem(null)
-    setDefaultSpace(space)
-    setShowSheet(true)
-  }
 
   function handleSaved(item: SpecItem) {
     setItems((prev) => {
@@ -65,6 +77,40 @@ export function SpecTab({ project, initialItems, currentUser }: SpecTabProps) {
 
   function handleDeleted(id: string) {
     setItems((prev) => prev.filter((i) => i.id !== id))
+  }
+
+  async function handleAddRow(space: string) {
+    try {
+      const item = await createSpecItem({ projectId: project.id, space, surface: "floor" })
+      handleSaved(item)
+    } catch (err) {
+      toast({ title: String(err), variant: "destructive" })
+    }
+  }
+
+  async function handleAddSpace() {
+    const space = newSpaceName.trim()
+    if (!space) return
+    setAddingSpace(true)
+    try {
+      await handleAddRow(space)
+      setNewSpaceName("")
+    } finally {
+      setAddingSpace(false)
+    }
+  }
+
+  async function handleFieldSave(itemId: string, field: string, value: string | null) {
+    // Optimistic update so the cell reflects the edit immediately.
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, [field]: value } : i)))
+    try {
+      const updated = await updateSpecItem(itemId, { [field]: value } as Partial<SpecItem>)
+      handleSaved(updated)
+    } catch (err) {
+      const original = items.find((i) => i.id === itemId)
+      if (original) handleSaved(original)
+      toast({ title: String(err), variant: "destructive" })
+    }
   }
 
   async function openImport() {
@@ -84,9 +130,13 @@ export function SpecTab({ project, initialItems, currentUser }: SpecTabProps) {
     if (!scheduleId) return
     setImporting(true)
     try {
-      const newItems = await importFromProcurement(project.id, scheduleId)
-      setItems((prev) => [...prev, ...newItems])
-      toast({ title: `${newItems.length} item${newItems.length !== 1 ? "s" : ""} imported.` })
+      const { imported, skippedCount } = await importFromProcurement(project.id, scheduleId)
+      setItems((prev) => [...prev, ...imported])
+      const parts = [`${imported.length} item${imported.length !== 1 ? "s" : ""} imported.`]
+      if (skippedCount > 0) {
+        parts.push(`${skippedCount} already imported — skipped.`)
+      }
+      toast({ title: parts.join(" ") })
       setShowImportSelect(false)
       setScheduleId("")
     } catch (err) {
@@ -103,12 +153,22 @@ export function SpecTab({ project, initialItems, currentUser }: SpecTabProps) {
         <div className="flex items-center gap-2 flex-wrap">
           {canManage && (
             <>
-              <Button
-                className="bg-[#1a1a2e] hover:bg-[#2d2d4e] text-white"
-                onClick={() => { setEditItem(null); setDefaultSpace(""); setShowSheet(true) }}
-              >
-                <Plus className="w-4 h-4 mr-1" /> Add Spec Item
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  className="h-9 w-40 text-sm"
+                  placeholder="New space name…"
+                  value={newSpaceName}
+                  onChange={(e) => setNewSpaceName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddSpace()}
+                />
+                <Button
+                  className="bg-[#1a1a2e] hover:bg-[#2d2d4e] text-white"
+                  onClick={handleAddSpace}
+                  disabled={!newSpaceName.trim() || addingSpace}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add Space
+                </Button>
+              </div>
               <Button variant="outline" onClick={openImport}>
                 <Upload className="w-4 h-4 mr-1" /> Import from Procurement
               </Button>
@@ -179,28 +239,21 @@ export function SpecTab({ project, initialItems, currentUser }: SpecTabProps) {
           <FileText className="w-10 h-10 text-muted-foreground mb-3" />
           <p className="text-sm font-medium">No specification items yet.</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Add items manually or import from a procurement schedule.
+            Add a space above, or import from a procurement schedule.
           </p>
         </div>
       ) : (
         <SpecTable
           items={filteredItems}
           canManage={canManage}
-          onEdit={handleEdit}
-          onAddToSpace={handleAddToSpace}
+          vendors={vendors}
+          drawings={drawings}
+          procurementItems={procurementItems}
+          onAddRow={handleAddRow}
+          onFieldSave={handleFieldSave}
           onDeleted={handleDeleted}
         />
       )}
-
-      <SpecItemSheet
-        open={showSheet}
-        onOpenChange={setShowSheet}
-        projectId={project.id}
-        existingSpaces={allSpaces}
-        editItem={editItem}
-        defaultSpace={defaultSpace}
-        onSaved={handleSaved}
-      />
     </div>
   )
 }
