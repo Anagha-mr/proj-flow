@@ -280,6 +280,216 @@ export async function toggleScheduleShare(
   return { shareToken: schedule.share_token }
 }
 
+// ─── Send schedule for approval ───────────────────────────────────────────────
+// Schedule-level "Send for approval": one batched move to client_review plus a
+// single share link for the project's linked client. No WhatsApp is sent from
+// the server — the UI opens wa.me with the link.
+
+const APPROVAL_MANAGER_ROLES = ["owner", "senior_designer", "designer"]
+
+export type ScheduleApprovalBlockReason =
+  | "forbidden" | "not_found" | "no_items" | "no_eligible" | "no_client"
+  | "no_whatsapp" | "no_portal_token" | "expired_portal_token"
+
+type ApprovalContext = {
+  schedule: { id: string; name: string; project_id: string; share_token: string; share_token_expires_at: string | null }
+  client: { id: string; name: string; whatsapp_number: string; portal_token: string }
+  eligibleIds: string[]   // will be client_review after send
+  resetIds: string[]      // subset of eligible currently resubmit
+  missingIds: string[]    // subset of eligible with no status row yet
+  skippedCount: number    // approved / rejected / closed
+  hiddenCount: number     // curation_status = hidden, excluded
+}
+
+async function loadApprovalContext(
+  supabase: Awaited<ReturnType<typeof getAuthContext>>["supabase"],
+  studioId: string,
+  scheduleId: string
+): Promise<{ ok: true; ctx: ApprovalContext } | { ok: false; reason: ScheduleApprovalBlockReason }> {
+  const { data: schedule } = await supabase
+    .from("procurement_schedules")
+    .select("id, name, project_id, share_token, share_token_expires_at")
+    .eq("id", scheduleId)
+    .eq("studio_id", studioId)
+    .single()
+  if (!schedule) return { ok: false, reason: "not_found" }
+
+  const { data: items } = await supabase
+    .from("procurement_items")
+    .select("id")
+    .eq("schedule_id", scheduleId)
+    .eq("studio_id", studioId)
+    .eq("is_archived", false)
+  if (!items || items.length === 0) return { ok: false, reason: "no_items" }
+
+  const { data: statusRows } = await supabase
+    .from("procurement_item_status")
+    .select("item_id, curation_status, client_approval_status")
+    .in("item_id", items.map((i) => i.id))
+  const statusMap = new Map((statusRows ?? []).map((s) => [s.item_id, s]))
+
+  const eligibleIds: string[] = []
+  const resetIds: string[] = []
+  const missingIds: string[] = []
+  let skippedCount = 0
+  let hiddenCount = 0
+  for (const item of items) {
+    const s = statusMap.get(item.id)
+    if (!s) { eligibleIds.push(item.id); missingIds.push(item.id); continue }
+    if (s.curation_status === "hidden") { hiddenCount++; continue }
+    if (s.client_approval_status === "client_review") eligibleIds.push(item.id)
+    else if (s.client_approval_status === "resubmit") { eligibleIds.push(item.id); resetIds.push(item.id) }
+    else skippedCount++
+  }
+  if (eligibleIds.length === 0) return { ok: false, reason: "no_eligible" }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("client_id")
+    .eq("id", schedule.project_id)
+    .eq("studio_id", studioId)
+    .single()
+  if (!project?.client_id) return { ok: false, reason: "no_client" }
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, name, whatsapp_number, portal_token, portal_token_expires_at")
+    .eq("id", project.client_id)
+    .eq("studio_id", studioId)
+    .single()
+  if (!client) return { ok: false, reason: "no_client" }
+  if (!client.whatsapp_number?.trim()) return { ok: false, reason: "no_whatsapp" }
+  if (!client.portal_token) return { ok: false, reason: "no_portal_token" }
+  if (client.portal_token_expires_at && new Date(client.portal_token_expires_at) < new Date()) {
+    return { ok: false, reason: "expired_portal_token" }
+  }
+
+  return {
+    ok: true,
+    ctx: {
+      schedule,
+      client: { id: client.id, name: client.name, whatsapp_number: client.whatsapp_number.trim(), portal_token: client.portal_token },
+      eligibleIds, resetIds, missingIds, skippedCount, hiddenCount,
+    },
+  }
+}
+
+export async function getScheduleApprovalPreview(scheduleId: string): Promise<
+  | {
+      ok: true
+      clientName: string
+      whatsappNumber: string
+      eligibleCount: number
+      resetCount: number
+      skippedCount: number
+      hiddenCount: number
+    }
+  | { ok: false; reason: ScheduleApprovalBlockReason }
+> {
+  const { supabase, studioId, role } = await getAuthContext()
+  if (!APPROVAL_MANAGER_ROLES.includes(role)) return { ok: false, reason: "forbidden" }
+
+  const result = await loadApprovalContext(supabase, studioId, scheduleId)
+  if (!result.ok) return result
+  const { ctx } = result
+  return {
+    ok: true,
+    clientName: ctx.client.name,
+    whatsappNumber: ctx.client.whatsapp_number,
+    eligibleCount: ctx.eligibleIds.length,
+    resetCount: ctx.resetIds.length + ctx.missingIds.length,
+    skippedCount: ctx.skippedCount,
+    hiddenCount: ctx.hiddenCount,
+  }
+}
+
+export async function sendScheduleForApproval(scheduleId: string): Promise<
+  | {
+      ok: true
+      schedulePath: string
+      scheduleName: string
+      clientName: string
+      whatsappNumber: string
+      inReviewCount: number
+      resetCount: number
+      skippedCount: number
+      hiddenCount: number
+    }
+  | { ok: false; reason: ScheduleApprovalBlockReason }
+> {
+  const { supabase, studioId, role } = await getAuthContext()
+  if (!APPROVAL_MANAGER_ROLES.includes(role)) return { ok: false, reason: "forbidden" }
+
+  const result = await loadApprovalContext(supabase, studioId, scheduleId)
+  if (!result.ok) return result
+  const { ctx } = result
+
+  // Enable the share link + client approvals. Clear an expired link expiry
+  // (same default as the Share panel); a future expiry is kept as-is.
+  const linkExpired = ctx.schedule.share_token_expires_at && new Date(ctx.schedule.share_token_expires_at) < new Date()
+  const { error: shareErr } = await supabase
+    .from("procurement_schedules")
+    .update({
+      share_enabled: true,
+      client_can_approve: true,
+      ...(linkExpired ? { share_token_expires_at: null } : {}),
+    })
+    .eq("id", scheduleId)
+    .eq("studio_id", studioId)
+  if (shareErr) throw new Error(shareErr.message)
+
+  // One batched write: resubmit → client_review. Filtered on the current status
+  // so anything approved/rejected/closed since the preview is never overwritten.
+  let resetCount = 0
+  if (ctx.resetIds.length > 0) {
+    const { data: updated, error } = await supabase
+      .from("procurement_item_status")
+      .update({ client_approval_status: "client_review" })
+      .in("item_id", ctx.resetIds)
+      .eq("studio_id", studioId)
+      .eq("client_approval_status", "resubmit")
+      .select("item_id")
+    if (error) throw new Error(error.message)
+    resetCount += updated?.length ?? 0
+  }
+
+  // Items with no status row get one (defaults to client_review). Rows created
+  // since the preview are left untouched.
+  if (ctx.missingIds.length > 0) {
+    const { data: inserted, error } = await supabase
+      .from("procurement_item_status")
+      .upsert(
+        ctx.missingIds.map((id) => ({ item_id: id, studio_id: studioId, client_approval_status: "client_review" })),
+        { onConflict: "item_id", ignoreDuplicates: true }
+      )
+      .select("item_id")
+    if (error) throw new Error(error.message)
+    resetCount += inserted?.length ?? 0
+  }
+
+  // Count from the DB after the write so the toast matches what is stored.
+  const { data: after } = await supabase
+    .from("procurement_item_status")
+    .select("item_id")
+    .in("item_id", ctx.eligibleIds)
+    .eq("client_approval_status", "client_review")
+  const inReviewCount = after?.length ?? 0
+
+  revalidatePath(`/dashboard/projects/${ctx.schedule.project_id}`)
+
+  return {
+    ok: true,
+    schedulePath: `/share/procurement/${ctx.schedule.share_token}?token=${ctx.client.portal_token}`,
+    scheduleName: ctx.schedule.name,
+    clientName: ctx.client.name,
+    whatsappNumber: ctx.client.whatsapp_number,
+    inReviewCount,
+    resetCount,
+    skippedCount: ctx.skippedCount + (ctx.eligibleIds.length - inReviewCount),
+    hiddenCount: ctx.hiddenCount,
+  }
+}
+
 // ─── getItems ─────────────────────────────────────────────────────────────────
 
 export async function getItems(scheduleId: string): Promise<ProcurementItem[]> {

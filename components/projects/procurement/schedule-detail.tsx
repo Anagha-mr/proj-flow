@@ -57,7 +57,19 @@ import {
   RefreshCw,
   Loader2,
   Pencil,
+  Send,
 } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { ToastAction } from "@/components/ui/toast"
 import {
   getItems,
   createItem,
@@ -67,6 +79,9 @@ import {
   updateItem,
   reorderItems,
   renameGroup,
+  getScheduleApprovalPreview,
+  sendScheduleForApproval,
+  type ScheduleApprovalBlockReason,
   type ProcurementSchedule,
   type ProcurementItem,
   type ViewType,
@@ -735,6 +750,16 @@ export function ScheduleDetail({
   const [addingGroup, setAddingGroup] = useState(false)
   const [refreshingItemId, setRefreshingItemId] = useState<string | null>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const [approvalPreview, setApprovalPreview] = useState<{
+    clientName: string
+    whatsappNumber: string
+    eligibleCount: number
+    resetCount: number
+    skippedCount: number
+    hiddenCount: number
+  } | null>(null)
+  const [checkingApproval, setCheckingApproval] = useState(false)
+  const [sendingApproval, setSendingApproval] = useState(false)
 
   const canManage = userRole === "owner" || userRole === "senior_designer" || userRole === "designer"
 
@@ -935,6 +960,92 @@ export function ScheduleDetail({
     }
   }
 
+  function showApprovalBlocked(reason: ScheduleApprovalBlockReason) {
+    const messages: Record<ScheduleApprovalBlockReason, { title: string; description?: string }> = {
+      forbidden:            { title: "You don't have permission to send this schedule for approval" },
+      not_found:            { title: "Schedule not found" },
+      no_items:             { title: "No items to send", description: "Add items to this schedule before sending it for approval." },
+      no_eligible:          { title: "Nothing to send for approval", description: "Every item is already approved, rejected, closed or hidden." },
+      no_client:            { title: "No client linked", description: "Link a client to this project before sending for approval." },
+      no_whatsapp:          { title: "WhatsApp number needed", description: "Add a WhatsApp number for this project's client on the Clients page." },
+      no_portal_token:      { title: "Client has no portal link", description: "Use \"Regenerate Portal Link\" for this client on the Clients page first." },
+      expired_portal_token: { title: "Client's portal link has expired", description: "Use \"Regenerate Portal Link\" for this client on the Clients page first." },
+    }
+    const goToClients = reason === "no_whatsapp" || reason === "no_portal_token" || reason === "expired_portal_token"
+    toast({
+      ...messages[reason],
+      variant: "destructive",
+      action: goToClients ? (
+        <ToastAction altText="Go to Clients" onClick={() => { window.location.href = "/dashboard/clients" }}>
+          Go to Clients
+        </ToastAction>
+      ) : undefined,
+    })
+  }
+
+  async function handleSendForApprovalClick() {
+    setCheckingApproval(true)
+    try {
+      const result = await getScheduleApprovalPreview(schedule.id)
+      if (result.ok) setApprovalPreview(result)
+      else showApprovalBlocked(result.reason)
+    } catch {
+      toast({ title: "Couldn't check this schedule. Please try again.", variant: "destructive" })
+    } finally {
+      setCheckingApproval(false)
+    }
+  }
+
+  async function handleConfirmSendForApproval() {
+    // Open the tab synchronously inside the click so pop-up blockers allow it,
+    // then point it at wa.me once the server action returns.
+    const win = window.open("", "_blank")
+    setSendingApproval(true)
+    try {
+      const result = await sendScheduleForApproval(schedule.id)
+      if (!result.ok) {
+        win?.close()
+        showApprovalBlocked(result.reason)
+        return
+      }
+      // wa.me needs digits only, including country code
+      const digits = result.whatsappNumber.replace(/\D/g, "")
+      const scheduleUrl = `${window.location.origin}${result.schedulePath}`
+      const message = `Hi ${result.clientName}, please review the items in "${result.scheduleName}". You can approve, request a revision or decline each item here: ${scheduleUrl}`
+      const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+      if (win) {
+        win.opener = null
+        win.location.href = waUrl
+      }
+
+      const parts = [`${result.inReviewCount} item${result.inReviewCount !== 1 ? "s" : ""} in Client Review`]
+      if (result.resetCount > 0) parts.push(`${result.resetCount} reset`)
+      if (result.skippedCount > 0) parts.push(`${result.skippedCount} skipped`)
+      if (result.hiddenCount > 0) parts.push(`${result.hiddenCount} hidden excluded`)
+      toast({
+        title: win ? "Sent for approval — WhatsApp opened" : "Sent for approval — WhatsApp was blocked",
+        description: win
+          ? `${parts.join(", ")}. Review the message and tap send in WhatsApp.`
+          : `${parts.join(", ")}. Your browser blocked the new tab. Allow pop-ups and use the Share panel to copy the link.`,
+        variant: win ? "default" : "destructive",
+      })
+      const updatedSchedule = { ...localSchedule, share_enabled: true, client_can_approve: true }
+      setLocalSchedule(updatedSchedule)
+      onScheduleUpdate(updatedSchedule)
+      await load()
+    } catch (err) {
+      win?.close()
+      toast({
+        title: "Failed to send for approval",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      })
+    } finally {
+      setSendingApproval(false)
+      setApprovalPreview(null)
+    }
+  }
+
   const grouped = groupItems(items)
   const statusMeta = STATUS_BADGE[localSchedule.status] ?? STATUS_BADGE.draft
 
@@ -1019,6 +1130,19 @@ export function ScheduleDetail({
           >
             {localSchedule.view_type === "room_based" ? "Room View" : "Schedule View"}
           </Button>
+
+          {/* Send for approval */}
+          {canManage && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={checkingApproval || sendingApproval}
+              onClick={handleSendForApprovalClick}
+            >
+              {checkingApproval ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+              Send for approval
+            </Button>
+          )}
 
           {/* Share */}
           <Button
@@ -1149,6 +1273,53 @@ export function ScheduleDetail({
         projectId={projectId}
         onItemCreated={handleItemCreated}
       />
+
+      {/* Send for approval confirmation */}
+      <AlertDialog
+        open={!!approvalPreview}
+        onOpenChange={(open) => { if (!open && !sendingApproval) setApprovalPreview(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send for approval</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+                <p>
+                  This will mark <strong>{approvalPreview?.eligibleCount}</strong> item{approvalPreview?.eligibleCount !== 1 ? "s" : ""} as
+                  Client Review and open WhatsApp to send <strong>{approvalPreview?.clientName}</strong> the schedule link
+                  at <strong>{approvalPreview?.whatsappNumber}</strong>. Proceed?
+                </p>
+                <p>
+                  {approvalPreview?.clientName} will be able to approve, request a revision or decline each item from the link.
+                </p>
+                {approvalPreview && (approvalPreview.resetCount > 0 || approvalPreview.skippedCount > 0 || approvalPreview.hiddenCount > 0) && (
+                  <ul className="text-xs list-disc pl-4">
+                    {approvalPreview.resetCount > 0 && (
+                      <li>{approvalPreview.resetCount} will be reset to Client Review (revision requested or no status yet)</li>
+                    )}
+                    {approvalPreview.skippedCount > 0 && (
+                      <li>{approvalPreview.skippedCount} already approved, rejected or closed — left unchanged</li>
+                    )}
+                    {approvalPreview.hiddenCount > 0 && (
+                      <li>{approvalPreview.hiddenCount} hidden — excluded and left unchanged</li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sendingApproval}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[#e94560] hover:bg-[#c73652] text-white"
+              disabled={sendingApproval}
+              onClick={(e) => { e.preventDefault(); handleConfirmSendForApproval() }}
+            >
+              {sendingApproval ? "Sending…" : "Send & open WhatsApp"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Share panel */}
       {shareOpen && (
